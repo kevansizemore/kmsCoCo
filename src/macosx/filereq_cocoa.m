@@ -21,6 +21,7 @@
 
 #include "module.h"
 #include "ui.h"
+#include "xroar.h"
 
 static void *filereq_cocoa_new(void *cfg);
 
@@ -62,6 +63,23 @@ static char *load_filename(void *sptr, char const *title) {
 	NSOpenPanel *dialog = [NSOpenPanel openPanel];
 	NSString *ntitle = [[NSString alloc] initWithUTF8String:title];
 	[dialog setTitle:ntitle];
+
+	const char *hint = NULL;
+	if (strcasestr(title, "cartridge") || strcasestr(title, "cart")) {
+		hint = xroar_get_cart_path();
+	} else if (strcasestr(title, "disk") || strcasestr(title, "floppy")) {
+		hint = xroar_get_disk_path();
+	} else if (strcasestr(title, "tape")) {
+		hint = xroar_get_tape_path();
+	}
+	if (hint && *hint) {
+		NSString *hp = [[NSString stringWithUTF8String:hint] stringByExpandingTildeInPath];
+		BOOL isDir = NO;
+		if ([[NSFileManager defaultManager] fileExistsAtPath:hp isDirectory:&isDir] && isDir) {
+			[dialog setDirectoryURL:[NSURL fileURLWithPath:hp isDirectory:YES]];
+		}
+	}
+
 	cocoa_super_all_keys = 1;
 	char *filename = NULL;
 	if ([dialog runModal] == NSModalResponseOK) {
@@ -73,16 +91,61 @@ static char *load_filename(void *sptr, char const *title) {
 	return filename;
 }
 
+static bool cocoa_last_disk_auto_format = true;
+
+bool cocoa_filereq_last_disk_auto_format(void) {
+	return cocoa_last_disk_auto_format;
+}
+
 static char *save_filename(void *sptr, char const *title) {
 	struct cocoa_filereq_interface *frcocoa = sptr;
 	NSWindow *keyWindow = [[NSApplication sharedApplication] keyWindow];
 	NSSavePanel *dialog = [NSSavePanel savePanel];
 	NSString *ntitle = [[NSString alloc] initWithUTF8String:title];
 	[dialog setTitle:ntitle];
+
+	const char *hint = NULL;
+	bool is_disk = false;
+	if (strcasestr(title, "cartridge") || strcasestr(title, "cart")) {
+		hint = xroar_get_cart_path();
+	} else if (strcasestr(title, "disk") || strcasestr(title, "floppy")) {
+		hint = xroar_get_disk_path();
+		is_disk = true;
+	} else if (strcasestr(title, "tape")) {
+		hint = xroar_get_tape_path();
+	}
+	if (hint && *hint) {
+		NSString *hp = [[NSString stringWithUTF8String:hint] stringByExpandingTildeInPath];
+		BOOL isDir = NO;
+		if ([[NSFileManager defaultManager] fileExistsAtPath:hp isDirectory:&isDir] && isDir) {
+			[dialog setDirectoryURL:[NSURL fileURLWithPath:hp isDirectory:YES]];
+		}
+	}
+
+	NSButton *autoFormatBtn = nil;
+	if (is_disk) {
+		[dialog setNameFieldStringValue:@"NewDisk.dsk"];
+		[dialog setAllowedFileTypes:@[@"dsk", @"dmk", @"vdk", @"jvc"]];
+
+		NSView *acc = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 480, 36)];
+		autoFormatBtn = [[NSButton alloc] initWithFrame:NSMakeRect(14, 6, 460, 24)];
+		[autoFormatBtn setButtonType:NSButtonTypeSwitch];
+		[autoFormatBtn setTitle:@"Automatically format disk for immediate use (Color BASIC / RS-DOS)"];
+		[autoFormatBtn setFont:[NSFont systemFontOfSize:12]];
+		[autoFormatBtn setState:NSControlStateValueOn]; // Checked by default
+		[acc addSubview:autoFormatBtn];
+		[dialog setAccessoryView:acc];
+		[autoFormatBtn release];
+		[acc release];
+	}
+
 	cocoa_super_all_keys = 1;
 	char *filename = NULL;
 	if ([dialog runModal] == NSModalResponseOK) {
 		filename = xstrdup([[[dialog URL] path] UTF8String]);
+		if (is_disk && autoFormatBtn) {
+			cocoa_last_disk_auto_format = ([autoFormatBtn state] == NSControlStateValueOn);
+		}
 	}
 	cocoa_super_all_keys = 0;
 	[ntitle release];

@@ -303,7 +303,7 @@ static void *ui_gtk2_new(void *cfg) {
 
 	gtk_init(NULL, NULL);
 
-	g_set_application_name("XRoar");
+	g_set_application_name(PACKAGE_NAME);
 
 #ifdef HAVE_X11
 	Display *display = gdk_x11_get_default_xdisplay();

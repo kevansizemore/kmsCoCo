@@ -62,6 +62,7 @@ void sound_set_mux_enabled(struct sound_interface *sndp, bool enabled);
 void sound_set_mux_source(struct sound_interface *sndp, unsigned source);
 void sound_set_dac_level(struct sound_interface *sndp, float level);
 void sound_set_tape_level(struct sound_interface *sndp, float level);
+void sound_set_tape_monitor(struct sound_interface *sndp, bool enabled);
 void sound_set_external_left(struct sound_interface *sndp, float level);
 void sound_set_external_right(struct sound_interface *sndp, float level);
 

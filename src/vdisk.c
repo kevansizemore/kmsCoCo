@@ -1105,6 +1105,52 @@ bool vdisk_format_disk(struct vdisk_ctx *ctx, bool dden,
 	return 1;
 }
 
+bool vdisk_format_rsdos(struct vdisk *disk) {
+	if (!disk) return false;
+	struct vdisk_ctx *ctx = vdisk_ctx_new(disk);
+	if (!ctx) return false;
+
+	// RS-DOS standard: double density, 35 tracks, 1 head, 18 sectors/track, first sector 1, 256 bytes/sector
+	if (!vdisk_format_disk(ctx, 1, 35, 1, 18, 1, 1)) {
+		vdisk_ctx_free(ctx);
+		return false;
+	}
+
+	uint8_t zero_buf[256];
+	memset(zero_buf, 0, sizeof(zero_buf));
+	for (unsigned c = 0; c < 35; c++) {
+		if (c == 17) continue;
+		for (unsigned s = 1; s <= 18; s++) {
+			vdisk_write_sector(ctx, c, 0, s, 256, zero_buf);
+		}
+	}
+
+	// Track 17 (Directory track):
+	// Sector 1: Reserved / Unused ($FF)
+	uint8_t ff_buf[256];
+	memset(ff_buf, 0xFF, sizeof(ff_buf));
+	vdisk_write_sector(ctx, 17, 0, 1, 256, ff_buf);
+
+	// Sector 2: FAT (File Allocation Table)
+	// Bytes 0..67: All 68 granules free ($FF)
+	// Bytes 68..255: Unused ($FF)
+	vdisk_write_sector(ctx, 17, 0, 2, 256, ff_buf);
+
+	// Sectors 3..11: Directory (72 entries * 32 bytes = 2304 bytes, all $FF = available slots)
+	for (unsigned s = 3; s <= 11; s++) {
+		vdisk_write_sector(ctx, 17, 0, s, 256, ff_buf);
+	}
+
+	// Sectors 12..18: Unused on track 17 ($FF)
+	for (unsigned s = 12; s <= 18; s++) {
+		vdisk_write_sector(ctx, 17, 0, s, 256, ff_buf);
+	}
+
+	vdisk_ctx_free(ctx);
+	disk->dirty = 1;
+	return true;
+}
+
 // Locate a sector on the disk by scanning the IDAM table, and update its data
 // from that provided.
 

@@ -190,7 +190,7 @@ bool sdl_vo_init(struct ui_sdl3_interface *uisdl3) {
 
 	// Create window, setting fullscreen hint if appropriate
 	Uint32 wflags = SDL_WINDOW_RESIZABLE;
-	uisdl3->vo_window = SDL_CreateWindow("XRoar", vosdl->window_area.w, vosdl->window_area.h, wflags);
+	uisdl3->vo_window = SDL_CreateWindow(PACKAGE_NAME, vosdl->window_area.w, vosdl->window_area.h, wflags);
 	SDL_SetWindowMinimumSize(uisdl3->vo_window, 160, 120);
 	uisdl3->vo_window_id = SDL_GetWindowID(uisdl3->vo_window);
 

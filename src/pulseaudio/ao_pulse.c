@@ -136,7 +136,7 @@ static void *new(void *cfg) {
 	}
 	ba.tlength = fragment_nframes * nfragments * frame_nbytes;
 
-	aopulse->pa = pa_simple_new(NULL, "XRoar", PA_STREAM_PLAYBACK, device,
+	aopulse->pa = pa_simple_new(NULL, PACKAGE_NAME, PA_STREAM_PLAYBACK, device,
 	                   "output", &ss, NULL, &ba, &error);
 	if (!aopulse->pa) {
 		LOG_MOD_ERROR("pulse", "failed to initialise: %s\n", pa_strerror(error));

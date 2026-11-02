@@ -33,6 +33,7 @@
 #include "slist.h"
 #include "xalloc.h"
 
+#include "auto_kbd.h"
 #include "blockdev.h"
 #include "cart.h"
 #include "hkbd.h"
@@ -52,6 +53,8 @@
 #include "sdl2/common.h"
 
 #include "macosx/ui_macosx.h"
+#include "tape_deck.h"
+#import "macosx/tape_deck_cocoa.h"
 
 // Extend the UI tags for our own purposes
 
@@ -72,6 +75,11 @@ static const int hd_type_map[4] = {
 };
 
 @interface SDLMain : NSObject <NSApplicationDelegate>
+- (void)orderFrontStandardAboutPanel:(id)sender;
+- (void)showTapeDeck:(id)sender;
+- (void)insertTapeAction:(id)sender;
+- (void)newTapeAction:(id)sender;
+- (void)ejectTapeAction:(id)sender;
 @end
 
 /* For some reaon, Apple removed setAppleMenu from the headers in 10.4, but the
@@ -109,16 +117,1227 @@ static void cocoa_update_radio_menu_from_enum(NSMenu *menu, struct xconfig_enum 
  * OpenGL application.  SDL2 in 2019 note: not sure if this is needed now?  */
 int cocoa_super_all_keys = 0;
 
-@interface XRoarApplication : NSApplication
+static NSMenu *recent_menu = nil;
+static void cocoa_update_recent_menu(void);
+
+@interface kmsCoCoPreferencesController : NSObject <NSWindowDelegate> {
+	NSWindow *prefsWindow;
+	NSTextField *romPathField;
+	NSTextField *cartPathField;
+	NSTextField *diskPathField;
+	NSTextField *tapePathField;
+
+	// Printer preferences
+	NSPopUpButton *printDestPopup;
+	NSPopUpButton *printFamilyPopup;
+	NSComboBox *printSizeCombo;
+	NSPopUpButton *printMarginPopup;
+	NSPopUpButton *printAutoflushPopup;
+	NSTextField *printPathField;
+
+	// Header & Page Number preferences
+	NSTextField *printHeaderTitleField;
+	NSButton *printHeaderShowTitleCheck;
+	NSButton *printHeaderShowDateCheck;
+	NSPopUpButton *printPageNumLocPopup;
+	NSPopUpButton *printPageNumFmtPopup;
+}
++ (kmsCoCoPreferencesController *)sharedController;
+- (void)showPreferencesWindow;
+- (void)browseRom:(id)sender;
+- (void)browseCart:(id)sender;
+- (void)browseDisk:(id)sender;
+- (void)browseTape:(id)sender;
+- (void)browsePrint:(id)sender;
+- (void)save:(id)sender;
+- (void)cancel:(id)sender;
 @end
 
-@implementation XRoarApplication
+static NSString *get_default_print_dir(void) {
+	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+	NSString *docsDir = [paths count] > 0 ? [paths objectAtIndex:0] : NSHomeDirectory();
+	return [docsDir stringByAppendingPathComponent:@"kmsCoCo/Printouts"];
+}
+
+static NSTextField *make_pref_label(NSString *text, NSRect frame) {
+	NSTextField *label = [[NSTextField alloc] initWithFrame:frame];
+	[label setStringValue:text];
+	[label setBezeled:NO];
+	[label setDrawsBackground:NO];
+	[label setEditable:NO];
+	[label setSelectable:NO];
+	[label setAlignment:NSTextAlignmentRight];
+	[label setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+	return label;
+}
+
+static NSTextField *make_pref_field(NSRect frame) {
+	NSTextField *field = [[NSTextField alloc] initWithFrame:frame];
+	[field setBezeled:YES];
+	[field setBezelStyle:NSTextFieldSquareBezel];
+	[field setDrawsBackground:YES];
+	[field setEditable:YES];
+	[field setSelectable:YES];
+	[field setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+	return field;
+}
+
+static NSButton *make_pref_button(NSString *title, NSRect frame, id target, SEL action) {
+	NSButton *btn = [[NSButton alloc] initWithFrame:frame];
+	[btn setTitle:title];
+	[btn setButtonType:NSButtonTypeMomentaryPushIn];
+	[btn setBezelStyle:NSBezelStyleRounded];
+	[btn setTarget:target];
+	[btn setAction:action];
+	return btn;
+}
+
+static NSPopUpButton *make_pref_popup(NSRect frame) {
+	NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:frame pullsDown:NO];
+	[popup removeAllItems];
+	[popup setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+	return popup;
+}
+
+static NSComboBox *make_pref_combobox(NSRect frame, NSArray *items) {
+	NSComboBox *box = [[NSComboBox alloc] initWithFrame:frame];
+	[box setEditable:YES];
+	[box setCompletes:YES];
+	[box setHasVerticalScroller:YES];
+	[box setNumberOfVisibleItems:10];
+	[box setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+	if (items) {
+		[box addItemsWithObjectValues:items];
+	}
+	return box;
+}
+
+static NSButton *make_pref_checkbox(NSString *title, NSRect frame) {
+	NSButton *btn = [[NSButton alloc] initWithFrame:frame];
+	[btn setButtonType:NSButtonTypeSwitch];
+	[btn setTitle:title];
+	[btn setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+	return btn;
+}
+
+@implementation kmsCoCoPreferencesController
+
++ (kmsCoCoPreferencesController *)sharedController {
+	static kmsCoCoPreferencesController *shared = nil;
+	if (!shared) {
+		shared = [[kmsCoCoPreferencesController alloc] init];
+	}
+	return shared;
+}
+
+- (void)chooseDirectoryForField:(NSTextField *)field title:(NSString *)title {
+	NSOpenPanel *panel = [NSOpenPanel openPanel];
+	[panel setTitle:title];
+	[panel setPrompt:@"Select"];
+	[panel setCanChooseFiles:NO];
+	[panel setCanChooseDirectories:YES];
+	[panel setAllowsMultipleSelection:NO];
+	NSString *curr = [field stringValue];
+	if ([curr length] > 0) {
+		NSString *expanded = [curr stringByExpandingTildeInPath];
+		BOOL isDir = NO;
+		if ([[NSFileManager defaultManager] fileExistsAtPath:expanded isDirectory:&isDir] && isDir) {
+			[panel setDirectoryURL:[NSURL fileURLWithPath:expanded isDirectory:YES]];
+		}
+	}
+	cocoa_super_all_keys = 1;
+	if ([panel runModal] == NSModalResponseOK) {
+		NSURL *url = [[panel URLs] objectAtIndex:0];
+		[field setStringValue:[url path]];
+	}
+	cocoa_super_all_keys = 0;
+}
+
+- (void)browseRom:(id)sender {
+	(void)sender;
+	[self chooseDirectoryForField:romPathField title:@"Select System ROMs Directory"];
+}
+
+- (void)browseCart:(id)sender {
+	(void)sender;
+	[self chooseDirectoryForField:cartPathField title:@"Select Cartridges Directory"];
+}
+
+- (void)browseDisk:(id)sender {
+	(void)sender;
+	[self chooseDirectoryForField:diskPathField title:@"Select Floppy Disks Directory"];
+}
+
+- (void)browseTape:(id)sender {
+	(void)sender;
+	[self chooseDirectoryForField:tapePathField title:@"Select Cassettes Directory"];
+}
+
+- (void)browsePrint:(id)sender {
+	(void)sender;
+	[self chooseDirectoryForField:printPathField title:@"Select Printouts Directory"];
+}
+
+- (void)save:(id)sender {
+	(void)sender;
+	xroar_set_rom_path([[romPathField stringValue] UTF8String]);
+	xroar_set_cart_path([[cartPathField stringValue] UTF8String]);
+	xroar_set_disk_path([[diskPathField stringValue] UTF8String]);
+	xroar_set_tape_path([[tapePathField stringValue] UTF8String]);
+
+	if (printDestPopup) {
+		xroar_set_print_dest((int)[printDestPopup selectedTag]);
+	}
+	if (printFamilyPopup) {
+		xroar_set_print_font_family((int)[printFamilyPopup selectedTag]);
+	}
+	if (printSizeCombo) {
+		float fsz = [printSizeCombo floatValue];
+		if (fsz < 4.0f || fsz > 144.0f) fsz = 10.0f;
+		xroar_set_print_font_size(fsz);
+	}
+	if (printMarginPopup) {
+		float margin = (float)[printMarginPopup selectedTag] / 100.0f;
+		xroar_set_print_margin(margin);
+	}
+	if (printAutoflushPopup) {
+		xroar_set_print_autoflush_ms((int)[printAutoflushPopup selectedTag]);
+	}
+	if (printPathField) {
+		xroar_set_print_path([[printPathField stringValue] UTF8String]);
+	}
+	if (printHeaderTitleField) {
+		xroar_set_print_header_title([[printHeaderTitleField stringValue] UTF8String]);
+	}
+	if (printHeaderShowTitleCheck) {
+		xroar_set_print_header_show_title([printHeaderShowTitleCheck state] == NSControlStateValueOn);
+	}
+	if (printHeaderShowDateCheck) {
+		xroar_set_print_header_show_date([printHeaderShowDateCheck state] == NSControlStateValueOn);
+	}
+	if (printPageNumLocPopup) {
+		xroar_set_print_page_num_loc((int)[printPageNumLocPopup selectedTag]);
+	}
+	if (printPageNumFmtPopup) {
+		xroar_set_print_page_num_fmt((int)[printPageNumFmtPopup selectedTag]);
+	}
+
+	xroar_save_config_file();
+	cocoa_super_all_keys = 0;
+	[prefsWindow close];
+}
+
+- (void)cancel:(id)sender {
+	(void)sender;
+	cocoa_super_all_keys = 0;
+	[prefsWindow close];
+}
+
+- (void)windowWillClose:(NSNotification *)notification {
+	(void)notification;
+	cocoa_super_all_keys = 0;
+}
+
+- (void)showPreferencesWindow {
+	if (!prefsWindow) {
+		NSRect frame = NSMakeRect(0, 0, 580, 420);
+		NSUInteger styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+		prefsWindow = [[NSWindow alloc] initWithContentRect:frame
+		                                          styleMask:styleMask
+		                                            backing:NSBackingStoreBuffered
+		                                              defer:NO];
+		[prefsWindow setTitle:@"kmsCoCo Preferences"];
+		[prefsWindow setReleasedWhenClosed:NO];
+		[prefsWindow setDelegate:self];
+
+		NSView *contentView = [prefsWindow contentView];
+
+		NSTabView *tabView = [[NSTabView alloc] initWithFrame:NSMakeRect(15, 52, 550, 355)];
+		[tabView setTabViewType:NSTopTabsBezelBorder];
+		[contentView addSubview:tabView];
+
+		// ---- Tab 1: Media Folders ----
+		NSTabViewItem *tabFolders = [[NSTabViewItem alloc] initWithIdentifier:@"folders"];
+		[tabFolders setLabel:@"Media Folders"];
+		NSView *viewFolders = [tabFolders view];
+
+		// System ROMs
+		NSTextField *lblRom = make_pref_label(@"System ROMs:", NSMakeRect(10, 212, 120, 20));
+		[viewFolders addSubview:lblRom];
+		[lblRom release];
+		romPathField = make_pref_field(NSMakeRect(135, 210, 280, 24));
+		[viewFolders addSubview:romPathField];
+		NSButton *btnRom = make_pref_button(@"Browse…", NSMakeRect(425, 206, 85, 30), self, @selector(browseRom:));
+		[viewFolders addSubview:btnRom];
+		[btnRom release];
+
+		// Cartridges
+		NSTextField *lblCart = make_pref_label(@"Cartridges:", NSMakeRect(10, 162, 120, 20));
+		[viewFolders addSubview:lblCart];
+		[lblCart release];
+		cartPathField = make_pref_field(NSMakeRect(135, 160, 280, 24));
+		[viewFolders addSubview:cartPathField];
+		NSButton *btnCart = make_pref_button(@"Browse…", NSMakeRect(425, 156, 85, 30), self, @selector(browseCart:));
+		[viewFolders addSubview:btnCart];
+		[btnCart release];
+
+		// Floppy Disks
+		NSTextField *lblDisk = make_pref_label(@"Floppy Disks:", NSMakeRect(10, 112, 120, 20));
+		[viewFolders addSubview:lblDisk];
+		[lblDisk release];
+		diskPathField = make_pref_field(NSMakeRect(135, 110, 280, 24));
+		[viewFolders addSubview:diskPathField];
+		NSButton *btnDisk = make_pref_button(@"Browse…", NSMakeRect(425, 106, 85, 30), self, @selector(browseDisk:));
+		[viewFolders addSubview:btnDisk];
+		[btnDisk release];
+
+		// Cassettes
+		NSTextField *lblTape = make_pref_label(@"Cassettes:", NSMakeRect(10, 62, 120, 20));
+		[viewFolders addSubview:lblTape];
+		[lblTape release];
+		tapePathField = make_pref_field(NSMakeRect(135, 60, 280, 24));
+		[viewFolders addSubview:tapePathField];
+		NSButton *btnTape = make_pref_button(@"Browse…", NSMakeRect(425, 56, 85, 30), self, @selector(browseTape:));
+		[viewFolders addSubview:btnTape];
+		[btnTape release];
+
+		[tabView addTabViewItem:tabFolders];
+		[tabFolders release];
+
+		// ---- Tab 2: Printer ----
+		NSTabViewItem *tabPrinter = [[NSTabViewItem alloc] initWithIdentifier:@"printer"];
+		[tabPrinter setLabel:@"Printer"];
+		NSView *viewPrinter = [tabPrinter view];
+
+		// Destination
+		NSTextField *lblDest = make_pref_label(@"Destination:", NSMakeRect(10, 222, 120, 20));
+		[viewPrinter addSubview:lblDest];
+		[lblDest release];
+		printDestPopup = make_pref_popup(NSMakeRect(135, 219, 280, 26));
+		[printDestPopup addItemWithTitle:@"Native Print Dialog / PDF…"];
+		[[printDestPopup lastItem] setTag:PRINTER_DEST_PROMPT];
+		[printDestPopup addItemWithTitle:@"Auto-Save to PDF"];
+		[[printDestPopup lastItem] setTag:PRINTER_DEST_PDF];
+		[printDestPopup addItemWithTitle:@"Auto-Save to UTF-8 Text File"];
+		[[printDestPopup lastItem] setTag:PRINTER_DEST_TEXT];
+		[printDestPopup addItemWithTitle:@"Raw Output to File…"];
+		[[printDestPopup lastItem] setTag:PRINTER_DEST_FILE];
+		[printDestPopup addItemWithTitle:@"Disabled"];
+		[[printDestPopup lastItem] setTag:PRINTER_DEST_NONE];
+		[viewPrinter addSubview:printDestPopup];
+
+		// Font Family
+		NSTextField *lblFamily = make_pref_label(@"Font Family:", NSMakeRect(10, 182, 120, 20));
+		[viewPrinter addSubview:lblFamily];
+		[lblFamily release];
+		printFamilyPopup = make_pref_popup(NSMakeRect(135, 179, 280, 26));
+		[printFamilyPopup addItemWithTitle:@"Monospace (Menlo)"];
+		[[printFamilyPopup lastItem] setTag:PRINTER_FONT_MONO];
+		[printFamilyPopup addItemWithTitle:@"Serif (Times)"];
+		[[printFamilyPopup lastItem] setTag:PRINTER_FONT_SERIF];
+		[printFamilyPopup addItemWithTitle:@"Sans-Serif (Helvetica)"];
+		[[printFamilyPopup lastItem] setTag:PRINTER_FONT_SANS];
+		[viewPrinter addSubview:printFamilyPopup];
+
+		// Font Size (Combo Box)
+		NSTextField *lblSize = make_pref_label(@"Font Size:", NSMakeRect(10, 142, 120, 20));
+		[viewPrinter addSubview:lblSize];
+		[lblSize release];
+		NSArray *sizes = @[ @"6", @"7", @"8", @"9", @"10", @"11", @"12", @"13", @"14", @"15",
+		                    @"16", @"18", @"20", @"22", @"24", @"28", @"32", @"36", @"48", @"64", @"72" ];
+		printSizeCombo = make_pref_combobox(NSMakeRect(135, 140, 80, 24), sizes);
+		[viewPrinter addSubview:printSizeCombo];
+		NSTextField *lblPt = make_pref_label(@"pt", NSMakeRect(220, 142, 25, 20));
+		[lblPt setAlignment:NSTextAlignmentLeft];
+		[viewPrinter addSubview:lblPt];
+		[lblPt release];
+
+		// Page Margins
+		NSTextField *lblMargin = make_pref_label(@"Page Margins:", NSMakeRect(10, 102, 120, 20));
+		[viewPrinter addSubview:lblMargin];
+		[lblMargin release];
+		printMarginPopup = make_pref_popup(NSMakeRect(135, 99, 200, 26));
+		[printMarginPopup addItemWithTitle:@"0.25 inch (Narrow)"];
+		[[printMarginPopup lastItem] setTag:25];
+		[printMarginPopup addItemWithTitle:@"0.50 inch (Normal)"];
+		[[printMarginPopup lastItem] setTag:50];
+		[printMarginPopup addItemWithTitle:@"0.75 inch"];
+		[[printMarginPopup lastItem] setTag:75];
+		[printMarginPopup addItemWithTitle:@"1.00 inch (Wide)"];
+		[[printMarginPopup lastItem] setTag:100];
+		[viewPrinter addSubview:printMarginPopup];
+
+		// Auto-Flush
+		NSTextField *lblFlush = make_pref_label(@"Auto-Flush:", NSMakeRect(10, 62, 120, 20));
+		[viewPrinter addSubview:lblFlush];
+		[lblFlush release];
+		printAutoflushPopup = make_pref_popup(NSMakeRect(135, 59, 200, 26));
+		[printAutoflushPopup addItemWithTitle:@"1.0 second"];
+		[[printAutoflushPopup lastItem] setTag:1000];
+		[printAutoflushPopup addItemWithTitle:@"2.0 seconds (Default)"];
+		[[printAutoflushPopup lastItem] setTag:2000];
+		[printAutoflushPopup addItemWithTitle:@"3.0 seconds"];
+		[[printAutoflushPopup lastItem] setTag:3000];
+		[printAutoflushPopup addItemWithTitle:@"5.0 seconds"];
+		[[printAutoflushPopup lastItem] setTag:5000];
+		[printAutoflushPopup addItemWithTitle:@"Manual flush only"];
+		[[printAutoflushPopup lastItem] setTag:0];
+		[viewPrinter addSubview:printAutoflushPopup];
+
+		// Output Folder
+		NSTextField *lblFolder = make_pref_label(@"Output Folder:", NSMakeRect(10, 22, 120, 20));
+		[viewPrinter addSubview:lblFolder];
+		[lblFolder release];
+		printPathField = make_pref_field(NSMakeRect(135, 20, 280, 24));
+		[viewPrinter addSubview:printPathField];
+		NSButton *btnFolder = make_pref_button(@"Browse…", NSMakeRect(425, 16, 85, 30), self, @selector(browsePrint:));
+		[viewPrinter addSubview:btnFolder];
+		[btnFolder release];
+
+		[tabView addTabViewItem:tabPrinter];
+		[tabPrinter release];
+
+		// ---- Tab 3: Header & Page Numbers ----
+		NSTabViewItem *tabHeader = [[NSTabViewItem alloc] initWithIdentifier:@"header"];
+		[tabHeader setLabel:@"Header & Pages"];
+		NSView *viewHeader = [tabHeader view];
+
+		// Job / File Title
+		NSTextField *lblTitle = make_pref_label(@"Job Title:", NSMakeRect(10, 248, 120, 20));
+		[viewHeader addSubview:lblTitle];
+		[lblTitle release];
+		printHeaderTitleField = make_pref_field(NSMakeRect(135, 246, 280, 24));
+		[viewHeader addSubview:printHeaderTitleField];
+
+		// Include Title checkbox
+		printHeaderShowTitleCheck = make_pref_checkbox(@"Include Job / File Title in Header", NSMakeRect(135, 218, 360, 22));
+		[viewHeader addSubview:printHeaderShowTitleCheck];
+
+		// Include Date/Time checkbox
+		printHeaderShowDateCheck = make_pref_checkbox(@"Include Date / Timestamp in Header (ISO format)", NSMakeRect(135, 192, 360, 22));
+		[viewHeader addSubview:printHeaderShowDateCheck];
+
+		// Explanation label
+		NSTextField *lblNote = [[NSTextField alloc] initWithFrame:NSMakeRect(135, 148, 380, 38)];
+		[lblNote setStringValue:@"When both Title and Date are enabled, Title appears on the left and Date on the right. When only one is enabled, it is centered."];
+		[lblNote setBezeled:NO];
+		[lblNote setDrawsBackground:NO];
+		[lblNote setEditable:NO];
+		[lblNote setSelectable:NO];
+		[lblNote setFont:[NSFont systemFontOfSize:11.0]];
+		[lblNote setTextColor:[NSColor secondaryLabelColor]];
+		[viewHeader addSubview:lblNote];
+		[lblNote release];
+
+		// Separator line
+		NSBox *sep = [[NSBox alloc] initWithFrame:NSMakeRect(20, 138, 500, 1)];
+		[sep setBoxType:NSBoxSeparator];
+		[viewHeader addSubview:sep];
+		[sep release];
+
+		// Page Numbers Location
+		NSTextField *lblLoc = make_pref_label(@"Page Numbers:", NSMakeRect(10, 95, 120, 20));
+		[viewHeader addSubview:lblLoc];
+		[lblLoc release];
+		printPageNumLocPopup = make_pref_popup(NSMakeRect(135, 92, 240, 26));
+		[printPageNumLocPopup addItemWithTitle:@"None"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_NONE];
+		[printPageNumLocPopup addItemWithTitle:@"Bottom Center (Standard)"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_BOTTOM_CENTER];
+		[printPageNumLocPopup addItemWithTitle:@"Bottom Right"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_BOTTOM_RIGHT];
+		[printPageNumLocPopup addItemWithTitle:@"Bottom Left"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_BOTTOM_LEFT];
+		[printPageNumLocPopup addItemWithTitle:@"Top Center"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_TOP_CENTER];
+		[printPageNumLocPopup addItemWithTitle:@"Top Right"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_TOP_RIGHT];
+		[printPageNumLocPopup addItemWithTitle:@"Top Left"];
+		[[printPageNumLocPopup lastItem] setTag:PRINTER_PAGE_NUM_TOP_LEFT];
+		[viewHeader addSubview:printPageNumLocPopup];
+
+		// Page Numbers Format
+		NSTextField *lblFmt = make_pref_label(@"Format:", NSMakeRect(10, 55, 120, 20));
+		[viewHeader addSubview:lblFmt];
+		[lblFmt release];
+		printPageNumFmtPopup = make_pref_popup(NSMakeRect(135, 52, 240, 26));
+		[printPageNumFmtPopup addItemWithTitle:@"Page n of N  (e.g. Page 1 of 3)"];
+		[[printPageNumFmtPopup lastItem] setTag:PRINTER_PAGE_NUM_FMT_PAGE_N_OF_TOTAL];
+		[printPageNumFmtPopup addItemWithTitle:@"Page n  (e.g. Page 1)"];
+		[[printPageNumFmtPopup lastItem] setTag:PRINTER_PAGE_NUM_FMT_PAGE_N];
+		[printPageNumFmtPopup addItemWithTitle:@"n of N  (e.g. 1 of 3)"];
+		[[printPageNumFmtPopup lastItem] setTag:PRINTER_PAGE_NUM_FMT_N_OF_TOTAL];
+		[printPageNumFmtPopup addItemWithTitle:@"n  (e.g. 1)"];
+		[[printPageNumFmtPopup lastItem] setTag:PRINTER_PAGE_NUM_FMT_N];
+		[viewHeader addSubview:printPageNumFmtPopup];
+
+		[tabView addTabViewItem:tabHeader];
+		[tabHeader release];
+		[tabView release];
+
+		// Cancel button
+		NSButton *btnCancel = make_pref_button(@"Cancel", NSMakeRect(375, 14, 90, 32), self, @selector(cancel:));
+		[contentView addSubview:btnCancel];
+		[btnCancel release];
+
+		// Save button
+		NSButton *btnSave = make_pref_button(@"Save", NSMakeRect(475, 14, 90, 32), self, @selector(save:));
+		[btnSave setKeyEquivalent:@"\r"];
+		[prefsWindow setDefaultButtonCell:[btnSave cell]];
+		[contentView addSubview:btnSave];
+		[btnSave release];
+	}
+
+	const char *p;
+	p = xroar_get_rom_path();
+	[romPathField setStringValue:p ? [NSString stringWithUTF8String:p] : @""];
+	p = xroar_get_cart_path();
+	[cartPathField setStringValue:p ? [NSString stringWithUTF8String:p] : @""];
+	p = xroar_get_disk_path();
+	[diskPathField setStringValue:p ? [NSString stringWithUTF8String:p] : @""];
+	p = xroar_get_tape_path();
+	[tapePathField setStringValue:p ? [NSString stringWithUTF8String:p] : @""];
+
+	[printDestPopup selectItemWithTag:xroar_get_print_dest()];
+	[printFamilyPopup selectItemWithTag:xroar_get_print_font_family()];
+
+	float fsz = xroar_get_print_font_size();
+	if (fsz <= 0.0f) fsz = 10.0f;
+	if (fsz == (int)fsz) {
+		[printSizeCombo setStringValue:[NSString stringWithFormat:@"%d", (int)fsz]];
+	} else {
+		[printSizeCombo setStringValue:[NSString stringWithFormat:@"%.1f", fsz]];
+	}
+
+	int mtag = (int)(xroar_get_print_margin() * 100.0f + 0.5f);
+	[printMarginPopup selectItemWithTag:mtag];
+
+	[printAutoflushPopup selectItemWithTag:xroar_get_print_autoflush_ms()];
+
+	p = xroar_get_print_path();
+	if (p && *p) {
+		[printPathField setStringValue:[NSString stringWithUTF8String:p]];
+	} else {
+		[printPathField setStringValue:get_default_print_dir()];
+	}
+
+	p = xroar_get_print_header_title();
+	[printHeaderTitleField setStringValue:p ? [NSString stringWithUTF8String:p] : @"kmsCoCo Listing"];
+	[printHeaderShowTitleCheck setState:xroar_get_print_header_show_title() ? NSControlStateValueOn : NSControlStateValueOff];
+	[printHeaderShowDateCheck setState:xroar_get_print_header_show_date() ? NSControlStateValueOn : NSControlStateValueOff];
+	[printPageNumLocPopup selectItemWithTag:xroar_get_print_page_num_loc()];
+	[printPageNumFmtPopup selectItemWithTag:xroar_get_print_page_num_fmt()];
+
+	cocoa_super_all_keys = 1;
+	[prefsWindow center];
+	[prefsWindow makeKeyAndOrderFront:nil];
+	[NSApp activateIgnoringOtherApps:YES];
+}
+
+@end
+
+@interface kmsCoCoPrintTextView : NSTextView
+@property (nonatomic, assign) NSInteger totalPages;
+@end
+
+@implementation kmsCoCoPrintTextView
+
+- (BOOL)knowsPageRange:(NSRangePointer)range {
+	BOOL result = [super knowsPageRange:range];
+	if (result && range) {
+		self.totalPages = range->length;
+	}
+	return result;
+}
+
+- (void)drawPageBorderWithSize:(NSSize)borderSize {
+	[super drawPageBorderWithSize:borderSize];
+
+	NSPrintOperation *op = [NSPrintOperation currentOperation];
+	if (!op) return;
+	NSPrintInfo *printInfo = [op printInfo];
+
+	CGFloat leftMargin = printInfo ? [printInfo leftMargin] : 36.0;
+	CGFloat rightMargin = printInfo ? [printInfo rightMargin] : 36.0;
+	CGFloat topMargin = printInfo ? [printInfo topMargin] : 36.0;
+	CGFloat bottomMargin = printInfo ? [printInfo bottomMargin] : 36.0;
+
+	CGFloat contentLeft = leftMargin;
+	CGFloat contentRight = borderSize.width - rightMargin;
+	CGFloat contentWidth = contentRight - contentLeft;
+	if (contentWidth <= 0) contentWidth = borderSize.width;
+
+	BOOL showTitle = xroar_get_print_header_show_title();
+	BOOL showDate = xroar_get_print_header_show_date();
+	int pageLoc = xroar_get_print_page_num_loc();
+	int pageFmt = xroar_get_print_page_num_fmt();
+
+	NSInteger curPage = [op currentPage];
+	NSInteger totPages = self.totalPages > 0 ? self.totalPages : 1;
+	if (curPage > totPages) totPages = curPage;
+
+	NSString *pageStr = nil;
+	switch (pageFmt) {
+	case PRINTER_PAGE_NUM_FMT_PAGE_N:
+		pageStr = [NSString stringWithFormat:@"Page %ld", (long)curPage];
+		break;
+	case PRINTER_PAGE_NUM_FMT_N_OF_TOTAL:
+		pageStr = [NSString stringWithFormat:@"%ld of %ld", (long)curPage, (long)totPages];
+		break;
+	case PRINTER_PAGE_NUM_FMT_N:
+		pageStr = [NSString stringWithFormat:@"%ld", (long)curPage];
+		break;
+	case PRINTER_PAGE_NUM_FMT_PAGE_N_OF_TOTAL:
+	default:
+		pageStr = [NSString stringWithFormat:@"Page %ld of %ld", (long)curPage, (long)totPages];
+		break;
+	}
+
+	const char *cTitle = xroar_get_print_header_title();
+	NSString *title = (cTitle && *cTitle) ? [NSString stringWithUTF8String:cTitle] : @"kmsCoCo Listing";
+
+	NSDateFormatter *df = [[NSDateFormatter alloc] init];
+	[df setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
+	NSString *dateStr = [df stringFromDate:[NSDate date]];
+	[df release];
+
+	// Determine header items
+	NSString *headerLeft = nil;
+	NSString *headerCenter = nil;
+	NSString *headerRight = nil;
+
+	// Page number in top header?
+	NSString *topPageStr = nil;
+	if (pageLoc == PRINTER_PAGE_NUM_TOP_LEFT ||
+	    pageLoc == PRINTER_PAGE_NUM_TOP_CENTER ||
+	    pageLoc == PRINTER_PAGE_NUM_TOP_RIGHT) {
+		topPageStr = pageStr;
+	}
+
+	if (showTitle && showDate) {
+		headerLeft = title;
+		headerRight = dateStr;
+		if (pageLoc == PRINTER_PAGE_NUM_TOP_CENTER) {
+			headerCenter = topPageStr;
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_LEFT) {
+			headerLeft = [NSString stringWithFormat:@"%@  •  %@", title, topPageStr];
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_RIGHT) {
+			headerRight = [NSString stringWithFormat:@"%@  •  %@", topPageStr, dateStr];
+		}
+	} else if (showTitle) {
+		if (pageLoc == PRINTER_PAGE_NUM_TOP_CENTER) {
+			headerLeft = title;
+			headerCenter = topPageStr;
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_LEFT) {
+			headerLeft = topPageStr;
+			headerCenter = title;
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_RIGHT) {
+			headerCenter = title;
+			headerRight = topPageStr;
+		} else {
+			headerCenter = title;
+		}
+	} else if (showDate) {
+		if (pageLoc == PRINTER_PAGE_NUM_TOP_CENTER) {
+			headerLeft = dateStr;
+			headerCenter = topPageStr;
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_LEFT) {
+			headerLeft = topPageStr;
+			headerCenter = dateStr;
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_RIGHT) {
+			headerCenter = dateStr;
+			headerRight = topPageStr;
+		} else {
+			headerCenter = dateStr;
+		}
+	} else if (topPageStr) {
+		if (pageLoc == PRINTER_PAGE_NUM_TOP_LEFT) {
+			headerLeft = topPageStr;
+		} else if (pageLoc == PRINTER_PAGE_NUM_TOP_RIGHT) {
+			headerRight = topPageStr;
+		} else {
+			headerCenter = topPageStr;
+		}
+	}
+
+	BOOL hasHeader = (headerLeft != nil || headerCenter != nil || headerRight != nil);
+
+	// Determine footer items
+	NSString *footerLeft = nil;
+	NSString *footerCenter = nil;
+	NSString *footerRight = nil;
+	if (pageLoc == PRINTER_PAGE_NUM_BOTTOM_LEFT) {
+		footerLeft = pageStr;
+	} else if (pageLoc == PRINTER_PAGE_NUM_BOTTOM_CENTER) {
+		footerCenter = pageStr;
+	} else if (pageLoc == PRINTER_PAGE_NUM_BOTTOM_RIGHT) {
+		footerRight = pageStr;
+	}
+
+	BOOL hasFooter = (footerLeft != nil || footerCenter != nil || footerRight != nil);
+
+	if (!hasHeader && !hasFooter) return;
+
+	NSFont *hFont = [NSFont systemFontOfSize:9.0];
+	NSColor *hColor = [NSColor colorWithCalibratedWhite:0.25 alpha:1.0];
+
+	NSMutableParagraphStyle *leftStyle = [[NSMutableParagraphStyle alloc] init];
+	[leftStyle setAlignment:NSTextAlignmentLeft];
+	[leftStyle setLineBreakMode:NSLineBreakByTruncatingTail];
+
+	NSMutableParagraphStyle *centerStyle = [[NSMutableParagraphStyle alloc] init];
+	[centerStyle setAlignment:NSTextAlignmentCenter];
+	[centerStyle setLineBreakMode:NSLineBreakByTruncatingTail];
+
+	NSMutableParagraphStyle *rightStyle = [[NSMutableParagraphStyle alloc] init];
+	[rightStyle setAlignment:NSTextAlignmentRight];
+	[rightStyle setLineBreakMode:NSLineBreakByTruncatingTail];
+
+	NSDictionary *leftAttrs = @{ NSFontAttributeName: hFont, NSForegroundColorAttributeName: hColor, NSParagraphStyleAttributeName: leftStyle };
+	NSDictionary *centerAttrs = @{ NSFontAttributeName: hFont, NSForegroundColorAttributeName: hColor, NSParagraphStyleAttributeName: centerStyle };
+	NSDictionary *rightAttrs = @{ NSFontAttributeName: hFont, NSForegroundColorAttributeName: hColor, NSParagraphStyleAttributeName: rightStyle };
+
+	// Draw Header
+	if (hasHeader) {
+		CGFloat lineY = borderSize.height - topMargin + 5.0;
+		CGFloat headerY = borderSize.height - topMargin + 10.0;
+
+		CGFloat rightWidth = 0;
+		if (headerRight) {
+			NSSize rSize = [headerRight sizeWithAttributes:rightAttrs];
+			rightWidth = rSize.width + 4.0;
+			NSRect rRect = NSMakeRect(contentRight - rightWidth, headerY, rightWidth, 14.0);
+			[headerRight drawInRect:rRect withAttributes:rightAttrs];
+		}
+
+		CGFloat leftWidth = 0;
+		if (headerLeft) {
+			CGFloat avail = contentWidth - rightWidth - 10.0;
+			if (avail < 50.0) avail = 50.0;
+			NSSize lSize = [headerLeft sizeWithAttributes:leftAttrs];
+			leftWidth = MIN(lSize.width + 4.0, avail);
+			NSRect lRect = NSMakeRect(contentLeft, headerY, leftWidth, 14.0);
+			[headerLeft drawInRect:lRect withAttributes:leftAttrs];
+		}
+
+		if (headerCenter) {
+			CGFloat sideMax = MAX(leftWidth, rightWidth);
+			CGFloat cWidth = contentWidth - 2.0 * sideMax - 16.0;
+			if (cWidth < 60.0) cWidth = contentWidth;
+			NSRect cRect = NSMakeRect(contentLeft + (contentWidth - cWidth) / 2.0, headerY, cWidth, 14.0);
+			[headerCenter drawInRect:cRect withAttributes:centerAttrs];
+		}
+
+		// Divider rule
+		[NSGraphicsContext saveGraphicsState];
+		[NSBezierPath setDefaultLineWidth:0.5];
+		[[NSColor colorWithCalibratedWhite:0.75 alpha:1.0] setStroke];
+		[NSBezierPath strokeLineFromPoint:NSMakePoint(contentLeft, lineY)
+		                          toPoint:NSMakePoint(contentRight, lineY)];
+		[NSGraphicsContext restoreGraphicsState];
+	}
+
+	// Draw Footer
+	if (hasFooter) {
+		CGFloat footerY = (bottomMargin > 24.0) ? (bottomMargin - 22.0) : 8.0;
+		NSRect fRect = NSMakeRect(contentLeft, footerY, contentWidth, 14.0);
+		if (footerLeft) {
+			[footerLeft drawInRect:fRect withAttributes:leftAttrs];
+		}
+		if (footerCenter) {
+			[footerCenter drawInRect:fRect withAttributes:centerAttrs];
+		}
+		if (footerRight) {
+			[footerRight drawInRect:fRect withAttributes:rightAttrs];
+		}
+	}
+
+	[leftStyle release];
+	[centerStyle release];
+	[rightStyle release];
+}
+
+@end
+
+static void cocoa_handle_print_job(NSString *text) {
+	if (!text || [text length] == 0) return;
+
+	int dest = xroar_get_print_dest();
+	if (dest == PRINTER_DEST_NONE || dest == PRINTER_DEST_FILE || dest == PRINTER_DEST_PIPE) {
+		return;
+	}
+
+	NSString *printDir = nil;
+	const char *cpath = xroar_get_print_path();
+	if (cpath && *cpath) {
+		printDir = [NSString stringWithUTF8String:cpath];
+	} else {
+		printDir = get_default_print_dir();
+	}
+	printDir = [printDir stringByExpandingTildeInPath];
+
+	NSFileManager *fm = [NSFileManager defaultManager];
+	BOOL isDir = NO;
+	if (![fm fileExistsAtPath:printDir isDirectory:&isDir]) {
+		[fm createDirectoryAtPath:printDir withIntermediateDirectories:YES attributes:nil error:NULL];
+	}
+
+	NSString *enteredName = nil;
+	BOOL showTitle = xroar_get_print_header_show_title();
+	BOOL showDate = xroar_get_print_header_show_date();
+
+	if (dest == PRINTER_DEST_TEXT || dest == PRINTER_DEST_PDF) {
+		NSAlert *alert = [[NSAlert alloc] init];
+		[alert setAlertStyle:NSAlertStyleInformational];
+		if (dest == PRINTER_DEST_PDF) {
+			[alert setMessageText:@"Save PDF Printout"];
+		} else {
+			[alert setMessageText:@"Save Text Printout"];
+		}
+		[alert setInformativeText:@"Enter a job or file name and select header options:"];
+		[alert addButtonWithTitle:@"Save"];
+		[alert addButtonWithTitle:@"Cancel"];
+
+		NSView *accView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 380, 84)];
+
+		NSTextField *nameField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 54, 380, 24)];
+		[nameField setBezeled:YES];
+		[nameField setBezelStyle:NSTextFieldSquareBezel];
+		[nameField setDrawsBackground:YES];
+		[nameField setEditable:YES];
+		[nameField setSelectable:YES];
+		[nameField setPlaceholderString:@"Job / File Name"];
+		const char *cTitle = xroar_get_print_header_title();
+		NSString *lastTitle = (cTitle && *cTitle) ? [NSString stringWithUTF8String:cTitle] : @"kmsCoCo Listing";
+		[nameField setStringValue:lastTitle];
+		[accView addSubview:nameField];
+
+		NSButton *titleCheck = [[NSButton alloc] initWithFrame:NSMakeRect(0, 28, 380, 20)];
+		[titleCheck setButtonType:NSButtonTypeSwitch];
+		[titleCheck setTitle:@"Include job / file name in page header"];
+		[titleCheck setState:showTitle ? NSOnState : NSOffState];
+		[accView addSubview:titleCheck];
+
+		NSButton *dateCheck = [[NSButton alloc] initWithFrame:NSMakeRect(0, 4, 380, 20)];
+		[dateCheck setButtonType:NSButtonTypeSwitch];
+		[dateCheck setTitle:@"Include date / timestamp in page header"];
+		[dateCheck setState:showDate ? NSOnState : NSOffState];
+		[accView addSubview:dateCheck];
+
+		[alert setAccessoryView:accView];
+		[accView release];
+
+		[alert layout];
+		[alert.window setInitialFirstResponder:nameField];
+		[nameField selectText:nil];
+
+		[NSApp activateIgnoringOtherApps:YES];
+		cocoa_super_all_keys = 1;
+		NSModalResponse resp = [alert runModal];
+		cocoa_super_all_keys = 0;
+
+		if (resp != NSAlertFirstButtonReturn) {
+			[nameField release];
+			[titleCheck release];
+			[dateCheck release];
+			[alert release];
+			return;
+		}
+
+		enteredName = [[nameField stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+		if ([enteredName length] == 0) {
+			enteredName = @"kmsCoCo Listing";
+		}
+		showTitle = ([titleCheck state] == NSOnState);
+		showDate = ([dateCheck state] == NSOnState);
+
+		xroar_set_print_header_title([enteredName UTF8String]);
+		xroar_set_print_header_show_title(showTitle);
+		xroar_set_print_header_show_date(showDate);
+		xroar_save_config_file();
+
+		[nameField release];
+		[titleCheck release];
+		[dateCheck release];
+		[alert release];
+	} else {
+		const char *cTitle = xroar_get_print_header_title();
+		enteredName = (cTitle && *cTitle) ? [NSString stringWithUTF8String:cTitle] : @"kmsCoCo Listing";
+	}
+
+	NSString *safeFilename = [enteredName stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+	safeFilename = [safeFilename stringByReplacingOccurrencesOfString:@":" withString:@"_"];
+	safeFilename = [safeFilename stringByReplacingOccurrencesOfString:@"\\" withString:@"_"];
+	safeFilename = [safeFilename stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if ([safeFilename length] == 0) {
+		safeFilename = @"kmsCoCo_Listing";
+	}
+
+	if (dest == PRINTER_DEST_TEXT) {
+		if (showTitle || showDate) {
+			NSString *title = enteredName;
+			NSDateFormatter *df = [[NSDateFormatter alloc] init];
+			[df setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
+			NSString *dateStr = [df stringFromDate:[NSDate date]];
+			[df release];
+
+			NSString *headerLine = nil;
+			int width = 80;
+			if (showTitle && showDate) {
+				int pad = width - (int)[title length] - (int)[dateStr length];
+				if (pad < 2) pad = 2;
+				NSString *spaces = [@"" stringByPaddingToLength:pad withString:@" " startingAtIndex:0];
+				headerLine = [NSString stringWithFormat:@"%@%@%@", title, spaces, dateStr];
+			} else if (showTitle) {
+				int pad = (width - (int)[title length]) / 2;
+				if (pad < 0) pad = 0;
+				NSString *spaces = [@"" stringByPaddingToLength:pad withString:@" " startingAtIndex:0];
+				headerLine = [NSString stringWithFormat:@"%@%@", spaces, title];
+			} else {
+				int pad = (width - (int)[dateStr length]) / 2;
+				if (pad < 0) pad = 0;
+				NSString *spaces = [@"" stringByPaddingToLength:pad withString:@" " startingAtIndex:0];
+				headerLine = [NSString stringWithFormat:@"%@%@", spaces, dateStr];
+			}
+			NSString *divider = [@"" stringByPaddingToLength:width withString:@"-" startingAtIndex:0];
+			text = [NSString stringWithFormat:@"%@\n%@\n\n%@", headerLine, divider, text];
+		}
+
+		NSString *targetFilename = safeFilename;
+		if (![[targetFilename lowercaseString] hasSuffix:@".txt"]) {
+			targetFilename = [targetFilename stringByAppendingString:@".txt"];
+		}
+		NSString *txtPath = [printDir stringByAppendingPathComponent:targetFilename];
+		if ([fm fileExistsAtPath:txtPath]) {
+			NSString *base = [targetFilename stringByDeletingPathExtension];
+			int counter = 1;
+			while ([fm fileExistsAtPath:txtPath]) {
+				txtPath = [printDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_%d.txt", base, counter++]];
+			}
+		}
+
+		NSError *err = nil;
+		BOOL ok = [text writeToFile:txtPath atomically:YES encoding:NSUTF8StringEncoding error:&err];
+		if (ok) {
+			NSUserNotification *notif = [[NSUserNotification alloc] init];
+			[notif setTitle:@"kmsCoCo Printout Saved"];
+			[notif setInformativeText:[NSString stringWithFormat:@"Saved UTF-8 text to %@", [txtPath lastPathComponent]]];
+			[[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notif];
+			[notif release];
+			NSBeep();
+		} else {
+			NSLog(@"kmsCoCo: Failed to write text printout to %@: %@", txtPath, [err localizedDescription]);
+		}
+		return;
+	}
+
+	// Prepare font for PDF / Native Print Dialog
+	int family = xroar_get_print_font_family();
+	float fontSize = xroar_get_print_font_size();
+	if (fontSize < 4.0f || fontSize > 144.0f) fontSize = 10.0f;
+
+	NSFont *font = nil;
+	switch (family) {
+	case PRINTER_FONT_SERIF:
+		font = [NSFont fontWithName:@"Times" size:fontSize];
+		if (!font) font = [NSFont fontWithName:@"Georgia" size:fontSize];
+		break;
+	case PRINTER_FONT_SANS:
+		font = [NSFont fontWithName:@"Helvetica" size:fontSize];
+		if (!font) font = [NSFont systemFontOfSize:fontSize];
+		break;
+	case PRINTER_FONT_MONO:
+	default:
+		font = [NSFont fontWithName:@"Menlo" size:fontSize];
+		if (!font) font = [NSFont fontWithName:@"Courier" size:fontSize];
+		if (!font) font = [NSFont userFixedPitchFontOfSize:fontSize];
+		break;
+	}
+	if (!font) {
+		font = [NSFont userFixedPitchFontOfSize:fontSize];
+	}
+
+	NSPrintInfo *printInfo = [[NSPrintInfo sharedPrintInfo] copy];
+	float marginInches = xroar_get_print_margin();
+	if (marginInches < 0.1f) marginInches = 0.5f;
+	CGFloat marginPts = marginInches * 72.0f;
+
+	BOOL hasHeader = xroar_get_print_header_show_title() || xroar_get_print_header_show_date() ||
+	                 (xroar_get_print_page_num_loc() >= PRINTER_PAGE_NUM_TOP_CENTER);
+	BOOL hasFooter = (xroar_get_print_page_num_loc() >= PRINTER_PAGE_NUM_BOTTOM_CENTER &&
+	                  xroar_get_print_page_num_loc() <= PRINTER_PAGE_NUM_BOTTOM_LEFT);
+
+	CGFloat topMargin = marginPts;
+	CGFloat bottomMargin = marginPts;
+	if (hasHeader && topMargin < 42.0f) topMargin = 42.0f;
+	if (hasFooter && bottomMargin < 36.0f) bottomMargin = 36.0f;
+
+	[printInfo setLeftMargin:marginPts];
+	[printInfo setRightMargin:marginPts];
+	[printInfo setTopMargin:topMargin];
+	[printInfo setBottomMargin:bottomMargin];
+	[printInfo setHorizontallyCentered:NO];
+	[printInfo setVerticallyCentered:NO];
+
+	NSSize paperSize = [printInfo paperSize];
+	CGFloat printableWidth = paperSize.width - [printInfo leftMargin] - [printInfo rightMargin];
+	CGFloat printableHeight = paperSize.height - [printInfo topMargin] - [printInfo bottomMargin];
+	if (printableWidth <= 0) printableWidth = 468.0f;
+	if (printableHeight <= 0) printableHeight = 648.0f;
+
+	NSTextStorage *textStorage = [[NSTextStorage alloc] initWithString:text];
+	NSLayoutManager *layoutManager = [[NSLayoutManager alloc] init];
+	[textStorage addLayoutManager:layoutManager];
+	NSTextContainer *textContainer = [[NSTextContainer alloc] initWithContainerSize:NSMakeSize(printableWidth, CGFLOAT_MAX)];
+	[textContainer setWidthTracksTextView:YES];
+	[layoutManager addTextContainer:textContainer];
+
+	kmsCoCoPrintTextView *textView = [[kmsCoCoPrintTextView alloc] initWithFrame:NSMakeRect(0, 0, printableWidth, printableHeight) textContainer:textContainer];
+	[textView setFont:font];
+	[textView setTextColor:[NSColor blackColor]];
+	[textView setBackgroundColor:[NSColor whiteColor]];
+
+	if (dest == PRINTER_DEST_PDF) {
+		NSString *targetFilename = safeFilename;
+		if (![[targetFilename lowercaseString] hasSuffix:@".pdf"]) {
+			targetFilename = [targetFilename stringByAppendingString:@".pdf"];
+		}
+		NSString *pdfPath = [printDir stringByAppendingPathComponent:targetFilename];
+		if ([fm fileExistsAtPath:pdfPath]) {
+			NSString *base = [targetFilename stringByDeletingPathExtension];
+			int counter = 1;
+			while ([fm fileExistsAtPath:pdfPath]) {
+				pdfPath = [printDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_%d.pdf", base, counter++]];
+			}
+		}
+
+		NSMutableDictionary *dict = [printInfo dictionary];
+		[dict setObject:NSPrintSaveJob forKey:NSPrintJobDisposition];
+		[dict setObject:[NSURL fileURLWithPath:pdfPath] forKey:NSPrintJobSavingURL];
+
+		NSPrintOperation *op = [NSPrintOperation printOperationWithView:textView printInfo:printInfo];
+		[op setShowsPrintPanel:NO];
+		[op setShowsProgressPanel:NO];
+		[op runOperation];
+
+		NSUserNotification *notif = [[NSUserNotification alloc] init];
+		[notif setTitle:@"kmsCoCo Printout Saved"];
+		[notif setInformativeText:[NSString stringWithFormat:@"PDF saved to %@", [pdfPath lastPathComponent]]];
+		[[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notif];
+		[notif release];
+		NSBeep();
+	} else if (dest == PRINTER_DEST_PROMPT) {
+		NSPrintOperation *op = [NSPrintOperation printOperationWithView:textView printInfo:printInfo];
+		[op setShowsPrintPanel:YES];
+		[op setShowsProgressPanel:YES];
+
+		NSWindow *win = [NSApp mainWindow];
+		if (win) {
+			[op runOperationModalForWindow:win delegate:nil didRunSelector:NULL contextInfo:NULL];
+		} else {
+			[op runOperation];
+		}
+	}
+
+	[textView release];
+	[textContainer release];
+	[layoutManager release];
+	[textStorage release];
+	[printInfo release];
+}
+
+static void cocoa_printer_job_completed(void *sptr, const char *text, size_t len) {
+	(void)sptr;
+	if (!text || len == 0) return;
+
+	NSString *nsText = [[NSString alloc] initWithBytes:text length:len encoding:NSUTF8StringEncoding];
+	if (!nsText) {
+		nsText = [[NSString alloc] initWithBytes:text length:len encoding:NSISOLatin1StringEncoding];
+	}
+	if (!nsText) return;
+
+	dispatch_async(dispatch_get_main_queue(), ^{
+		cocoa_handle_print_job(nsText);
+		[nsText release];
+	});
+}
+
+static void cocoa_update_recent_menu(void) {
+	if (!recent_menu) return;
+	[recent_menu removeAllItems];
+
+	if (num_recent_media == 0) {
+		NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"No Recent Media" action:nil keyEquivalent:@""];
+		[item setEnabled:NO];
+		[recent_menu addItem:item];
+		[item release];
+		return;
+	}
+
+	for (int i = 0; i < num_recent_media; i++) {
+		if (!recent_media_list[i].path) continue;
+		NSString *typeLabel = @"";
+		switch (recent_media_list[i].type) {
+		case RECENT_MEDIA_CART:
+			typeLabel = @"[Cartridge]";
+			break;
+		case RECENT_MEDIA_DISK:
+			typeLabel = @"[Disk 1]";
+			break;
+		case RECENT_MEDIA_TAPE:
+			typeLabel = @"[Cassette]";
+			break;
+		}
+		NSString *pathStr = [NSString stringWithUTF8String:recent_media_list[i].path];
+		NSString *filename = [pathStr lastPathComponent];
+		NSString *title = [NSString stringWithFormat:@"%@   %@", filename, typeLabel];
+		NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:@selector(do_open_recent:) keyEquivalent:@""];
+		[item setTag:i];
+		[item setToolTip:pathStr];
+		[item setTarget:NSApp];
+		[recent_menu addItem:item];
+		[item release];
+	}
+
+	[recent_menu addItem:[NSMenuItem separatorItem]];
+
+	NSMenuItem *clear_item = [[NSMenuItem alloc] initWithTitle:@"Clear Menu" action:@selector(do_clear_recent:) keyEquivalent:@""];
+	[clear_item setTarget:NSApp];
+	[recent_menu addItem:clear_item];
+	[clear_item release];
+}
+
+static void cocoa_update_recent_menu_delegate(void *sptr) {
+	(void)sptr;
+	cocoa_update_recent_menu();
+}
+
+static void cocoa_check_coco_roms(void) {
+	struct coco_rom_status status;
+	check_coco_roms(&status);
+	if (status.all_ok) {
+		free_coco_rom_status(&status);
+		return;
+	}
+
+	while (!status.all_ok) {
+		NSAlert *alert = [[NSAlert alloc] init];
+		[alert setAlertStyle:NSAlertStyleWarning];
+		[alert setMessageText:@"Tandy Color Computer System ROMs Missing"];
+
+		NSMutableString *info = [NSMutableString string];
+		[info appendString:@"kmsCoCo requires Tandy Color Computer system ROMs to operate:\n\n"];
+
+		if (status.has_bas) {
+			[info appendFormat:@"• Color BASIC: Found (%@)\n",
+				[[NSString stringWithUTF8String:status.bas_path] lastPathComponent]];
+		} else {
+			[info appendString:@"• Color BASIC: MISSING (bas13.rom)\n"];
+		}
+
+		if (status.has_extbas) {
+			[info appendFormat:@"• Extended Color BASIC: Found (%@)\n",
+				[[NSString stringWithUTF8String:status.extbas_path] lastPathComponent]];
+		} else {
+			[info appendString:@"• Extended Color BASIC: MISSING (extbas11.rom)\n"];
+		}
+
+		if (status.has_rsdos) {
+			[info appendFormat:@"• RS-DOS Cartridge: Found (%@)\n",
+				[[NSString stringWithUTF8String:status.rsdos_path] lastPathComponent]];
+		} else {
+			[info appendString:@"• RS-DOS Cartridge: MISSING (disk11.rom)\n"];
+		}
+
+		[info appendString:@"\nPlease select a folder containing the required ROM images."];
+		[alert setInformativeText:info];
+
+		[alert addButtonWithTitle:@"Locate ROMs Folder…"];
+		[alert addButtonWithTitle:@"Quit"];
+
+		[NSApp activateIgnoringOtherApps:YES];
+		cocoa_super_all_keys = 1;
+		NSModalResponse resp = [alert runModal];
+		cocoa_super_all_keys = 0;
+		[alert release];
+
+		if (resp == NSAlertSecondButtonReturn) {
+			free_coco_rom_status(&status);
+			exit(0);
+		}
+
+		NSOpenPanel *panel = [NSOpenPanel openPanel];
+		[panel setTitle:@"Locate Color Computer System ROMs Folder"];
+		[panel setPrompt:@"Select Folder"];
+		[panel setCanChooseFiles:YES];
+		[panel setCanChooseDirectories:YES];
+		[panel setAllowsMultipleSelection:NO];
+
+		NSString *suggested = nil;
+		NSString *stuffPath = [NSHomeDirectory() stringByAppendingPathComponent:@"kmsCoCo Stuff"];
+		BOOL isDir = NO;
+		if ([[NSFileManager defaultManager] fileExistsAtPath:stuffPath isDirectory:&isDir] && isDir) {
+			suggested = stuffPath;
+		} else {
+			suggested = [@"~/Library/XRoar/roms" stringByExpandingTildeInPath];
+		}
+		if (suggested && [[NSFileManager defaultManager] fileExistsAtPath:suggested isDirectory:&isDir] && isDir) {
+			[panel setDirectoryURL:[NSURL fileURLWithPath:suggested isDirectory:YES]];
+		}
+
+		cocoa_super_all_keys = 1;
+		NSModalResponse panelResp = [panel runModal];
+		cocoa_super_all_keys = 0;
+
+		if (panelResp == NSModalResponseOK) {
+			NSURL *url = [[panel URLs] objectAtIndex:0];
+			BOOL selectedIsDir = NO;
+			NSString *chosenPath = [url path];
+			if ([[NSFileManager defaultManager] fileExistsAtPath:chosenPath isDirectory:&selectedIsDir]) {
+				NSString *folderPath = selectedIsDir ? chosenPath : [chosenPath stringByDeletingLastPathComponent];
+
+				// Check if there is a 'roms' subdirectory inside folderPath
+				NSString *romsSubdir = [folderPath stringByAppendingPathComponent:@"roms"];
+				BOOL subIsDir = NO;
+				BOOL hasRomsSubdir = ([[NSFileManager defaultManager] fileExistsAtPath:romsSubdir isDirectory:&subIsDir] && subIsDir);
+
+				const char *cur = xroar_get_rom_path();
+				NSString *newRomPath;
+				if (hasRomsSubdir) {
+					if (cur && *cur) {
+						newRomPath = [NSString stringWithFormat:@"%@:%@:%s", folderPath, romsSubdir, cur];
+					} else {
+						newRomPath = [NSString stringWithFormat:@"%@:%@", folderPath, romsSubdir];
+					}
+				} else {
+					if (cur && *cur) {
+						newRomPath = [NSString stringWithFormat:@"%@:%s", folderPath, cur];
+					} else {
+						newRomPath = folderPath;
+					}
+				}
+				xroar_set_rom_path([newRomPath UTF8String]);
+				xroar_save_config_file();
+			}
+		}
+
+		free_coco_rom_status(&status);
+		check_coco_roms(&status);
+	}
+
+	free_coco_rom_status(&status);
+}
+
+@interface kmsCoCoApplication : NSApplication
+@end
+
+@implementation kmsCoCoApplication
 
 - (void)sendEvent:(NSEvent *)anEvent {
 	switch ([anEvent type]) {
 		case NSEventTypeKeyDown:
 		case NSEventTypeKeyUp:
-			if (cocoa_super_all_keys || ([anEvent modifierFlags] & NSEventModifierFlagCommand)) {
+			if (cocoa_super_all_keys || ([anEvent modifierFlags] & NSEventModifierFlagCommand) || [anEvent window] != [self mainWindow]) {
 				[super sendEvent:anEvent];
 			}
 			break;
@@ -126,6 +1345,140 @@ int cocoa_super_all_keys = 0;
 			[super sendEvent:anEvent];
 			break;
 	}
+}
+
+- (void)paste:(id)sender {
+	(void)sender;
+	NSPasteboard *pb = [NSPasteboard generalPasteboard];
+	NSString *text = [pb stringForType:NSPasteboardTypeString];
+	if (!text || [text length] == 0) return;
+
+	if (xroar.auto_kbd) {
+		if (![text hasSuffix:@"\n"] && ![text hasSuffix:@"\r"]) {
+			text = [text stringByAppendingString:@"\r"];
+		}
+		const char *utf8 = [text UTF8String];
+		if (utf8 && *utf8) {
+			ak_type_string_len(xroar.auto_kbd, utf8, strlen(utf8));
+		}
+	}
+}
+
+- (void)do_type_text_file:(id)sender {
+	(void)sender;
+	NSOpenPanel *panel = [NSOpenPanel openPanel];
+	[panel setTitle:@"Select Text File to Type into BASIC"];
+	[panel setPrompt:@"Type"];
+	[panel setCanChooseFiles:YES];
+	[panel setCanChooseDirectories:NO];
+	[panel setAllowsMultipleSelection:NO];
+	[panel setAllowedFileTypes:@[@"bas", @"txt", @"asc", @"text"]];
+
+	cocoa_super_all_keys = 1;
+	NSModalResponse resp = [panel runModal];
+	cocoa_super_all_keys = 0;
+
+	if (resp == NSModalResponseOK) {
+		NSURL *url = [panel URL];
+		if (url && [url isFileURL]) {
+			NSString *path = [url path];
+			if (path && xroar.auto_kbd) {
+				ak_type_file(xroar.auto_kbd, [path UTF8String]);
+			}
+		}
+	}
+}
+
+- (void)do_open_recent:(id)sender {
+	int idx = (int)[sender tag];
+	if (idx >= 0 && idx < num_recent_media) {
+		const char *filepath = recent_media_list[idx].path;
+		if (!filepath) return;
+		if (access(filepath, R_OK) != 0) {
+			NSAlert *alert = [[NSAlert alloc] init];
+			[alert setAlertStyle:NSAlertStyleWarning];
+			[alert setMessageText:@"File Not Found"];
+			[alert setInformativeText:[NSString stringWithFormat:@"The recent file \"%s\" could not be found or opened.", filepath]];
+			[alert addButtonWithTitle:@"OK"];
+			cocoa_super_all_keys = 1;
+			[alert runModal];
+			cocoa_super_all_keys = 0;
+			[alert release];
+			return;
+		}
+
+		char *path = xstrdup(filepath);
+		enum recent_media_type type = recent_media_list[idx].type;
+		switch (type) {
+		case RECENT_MEDIA_CART:
+			hk_scan_release(hk_scan_Shift_L);
+			hk_scan_release(hk_scan_Shift_R);
+			xroar_load_file_by_type(path, 1);
+			break;
+		case RECENT_MEDIA_DISK:
+			xroar_insert_disk_file(0, path);
+			break;
+		case RECENT_MEDIA_TAPE:
+			tape_deck_insert_file(path);
+			[[kmsCoCoTapeDeckController sharedController] updateStatus];
+			break;
+		}
+		free(path);
+	}
+}
+
+- (void)do_clear_recent:(id)sender {
+	(void)sender;
+	recent_media_clear();
+}
+
+- (void)orderFrontPreferencesPanel:(id)sender {
+	(void)sender;
+	[[kmsCoCoPreferencesController sharedController] showPreferencesWindow];
+}
+
+- (void)orderFrontStandardAboutPanel:(id)sender {
+	(void)sender;
+	NSString *iconPath = [[NSBundle mainBundle] pathForResource:@"kmscoco" ofType:@"icns"];
+	NSImage *appIcon = iconPath ? [[NSImage alloc] initWithContentsOfFile:iconPath] : nil;
+	if (!appIcon) {
+		NSString *artworkPath = [[NSBundle mainBundle] pathForResource:@"about_artwork" ofType:@"png"];
+		if (artworkPath) {
+			appIcon = [[NSImage alloc] initWithContentsOfFile:artworkPath];
+		}
+	}
+
+	NSString *creditsStr = @"Tandy Color Computer (CoCo 1) Emulator\n\n"
+	                       @"Based on XRoar by Ciaran Anscomb\n"
+	                       @"https://www.6809.org.uk/xroar/\n\n"
+	                       @"Copyright © 2003-2026 Ciaran Anscomb and kmsCoCo contributors\n"
+	                       @"Developed with assistance from Google Gemini & Antigravity\n\n"
+	                       @"License: GNU General Public License version 3 or later\n"
+	                       @"https://www.gnu.org/licenses/gpl-3.0.html";
+	NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+	[style setAlignment:NSTextAlignmentCenter];
+	NSDictionary *attrs = [NSDictionary dictionaryWithObjectsAndKeys:
+		[NSFont systemFontOfSize:11], NSFontAttributeName,
+		style, NSParagraphStyleAttributeName,
+		nil];
+	NSAttributedString *creditsAttr = [[NSAttributedString alloc] initWithString:creditsStr attributes:attrs];
+	[style release];
+
+	NSMutableDictionary *options = [NSMutableDictionary dictionary];
+	[options setObject:@"kmsCoCo" forKey:@"ApplicationName"];
+	[options setObject:[NSString stringWithUTF8String:PACKAGE_VERSION] forKey:@"ApplicationVersion"];
+	[options setObject:[NSString stringWithFormat:@"Version %@", [NSString stringWithUTF8String:PACKAGE_VERSION]] forKey:@"Version"];
+	if (appIcon) {
+		[options setObject:appIcon forKey:@"ApplicationIcon"];
+	} else if ([NSApp applicationIconImage]) {
+		[options setObject:[NSApp applicationIconImage] forKey:@"ApplicationIcon"];
+	}
+	[options setObject:creditsAttr forKey:@"Credits"];
+	[creditsAttr release];
+
+	[NSApp activateIgnoringOtherApps:YES];
+	[super orderFrontStandardAboutPanelWithOptions:options];
+	if (appIcon) [appIcon release];
 }
 
 + (void)registerUserDefaults {
@@ -186,6 +1539,17 @@ int cocoa_super_all_keys = 0;
 			xroar_screenshot();
 			break;
 #endif
+		case ui_action_cart_insert:
+			hk_scan_release(hk_scan_Shift_L);
+			hk_scan_release(hk_scan_Shift_R);
+			{
+				char *filename = DELEGATE_CALL(xroar.ui_interface->filereq_interface->load_filename, "Run cartridge ROM");
+				if (filename) {
+					xroar_load_file_by_type(filename, 1);
+					free(filename);
+				}
+			}
+			break;
 		case ui_action_tape_input:
 			xroar_insert_input_tape();
 			break;
@@ -372,7 +1736,20 @@ int cocoa_super_all_keys = 0;
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
+	if ([item action] == @selector(showKeyboardGuide:) ||
+	    [item action] == @selector(orderFrontPreferencesPanel:) ||
+	    [item action] == @selector(do_open_recent:) ||
+	    [item action] == @selector(do_clear_recent:)) {
+		return YES;
+	}
+	if ([item action] == nil) {
+		return NO;
+	}
+
 	struct ui_macosx_interface *uimac = (struct ui_macosx_interface *)global_uisdl2;
+	if (!uimac) {
+		return YES;
+	}
 
 	int item_tag = [item tag];
 	int tag = UIMAC_TAG_TYPE(item_tag);
@@ -413,7 +1790,7 @@ int cocoa_super_all_keys = 0;
 		break;
 
 	case ui_tag_print_destination:
-		[item setState:((value == uimac->lp.destination) ? NSOnState : NSOffState)];
+		[item setState:((value == xroar_get_print_dest()) ? NSOnState : NSOffState)];
 		break;
 
 	case ui_tag_fullscreen:
@@ -477,10 +1854,71 @@ int cocoa_super_all_keys = 0;
 	return YES;
 }
 
+- (void)showKeyboardGuide:(id)sender {
+	(void)sender;
+	NSAlert *alert = [[NSAlert alloc] init];
+	[alert setMessageText:@"kmsCoCo Keyboard Guide"];
+	[alert setInformativeText:
+		@"Key Mappings for Modern Keyboards:\n\n"
+		@"• Break: Escape\n"
+		@"• Clear: F12 or Home\n"
+		@"• Backspace / Delete: CoCo Left arrow / Backspace\n"
+		@"• Directional Arrows: Up, Down, Left, Right\n"
+		@"• Caps Lock: Caps Lock key (or Shift + 0)\n\n"
+		@"Keyboard translation is permanently enabled: typing modern symbols (@, :, \", *, +, =) directly enters the corresponding CoCo character."];
+	[alert addButtonWithTitle:@"OK"];
+	[alert runModal];
+	[alert release];
+}
+
+- (void)showTapeDeck:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] showTapeDeckWindow];
+}
+
+- (void)insertTapeAction:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] insertTapeAction:sender];
+}
+
+- (void)newTapeAction:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] newTapeAction:sender];
+}
+
+- (void)ejectTapeAction:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] ejectTapeAction:sender];
+}
+
 @end
 
 /* The main class of the application, the application's delegate */
 @implementation SDLMain
+
+- (void)orderFrontStandardAboutPanel:(id)sender {
+	[NSApp orderFrontStandardAboutPanel:sender];
+}
+
+- (void)showTapeDeck:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] showTapeDeckWindow];
+}
+
+- (void)insertTapeAction:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] insertTapeAction:sender];
+}
+
+- (void)newTapeAction:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] newTapeAction:sender];
+}
+
+- (void)ejectTapeAction:(id)sender {
+	(void)sender;
+	[[kmsCoCoTapeDeckController sharedController] ejectTapeAction:sender];
+}
 
 /* Set the working directory to the .app's parent directory */
 - (void)setupWorkingDirectory:(BOOL)shouldChdir {
@@ -508,7 +1946,17 @@ static void setApplicationMenu(void) {
 
 	/* Add menu items */
 	title = [@"About " stringByAppendingString:app_name];
-	[apple_menu addItemWithTitle:title action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+	item = [[NSMenuItem alloc] initWithTitle:title action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+	[item setTarget:NSApp];
+	[apple_menu addItem:item];
+	[item release];
+
+	[apple_menu addItem:[NSMenuItem separatorItem]];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Preferences…" action:@selector(orderFrontPreferencesPanel:) keyEquivalent:@","];
+	[item setTarget:NSApp];
+	[apple_menu addItem:item];
+	[item release];
 
 	[apple_menu addItem:[NSMenuItem separatorItem]];
 
@@ -540,6 +1988,8 @@ static void setApplicationMenu(void) {
 	[item release];
 }
 
+static NSMenu *cartridge_menu;
+
 /* Create File menu */
 static void setup_file_menu(void) {
 	NSMenu *file_menu;
@@ -564,52 +2014,51 @@ static void setup_file_menu(void) {
 	[item release];
 	[tmp release];
 
+	tmp = [NSString stringWithFormat:@"Type text file%C", 0x2026];
+	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_type_text_file:) keyEquivalent:@"T"];
+	[item setTarget:NSApp];
+	[file_menu addItem:item];
+	[item release];
+	[tmp release];
+
+	[file_menu addItem:[NSMenuItem separatorItem]];
+
+	recent_menu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
+	item = [[NSMenuItem alloc] initWithTitle:@"Open Recent" action:nil keyEquivalent:@""];
+	[item setSubmenu:recent_menu];
+	[file_menu addItem:item];
+	[item release];
+
+	[file_menu addItem:[NSMenuItem separatorItem]];
+
+	cartridge_menu = [[NSMenu alloc] initWithTitle:@"Cartridge"];
+	item = [[NSMenuItem alloc] initWithTitle:@"Cartridge" action:nil keyEquivalent:@""];
+	[item setSubmenu:cartridge_menu];
+	[file_menu addItem:item];
+	[item release];
+
 	[file_menu addItem:[NSMenuItem separatorItem]];
 
 	submenu = [[NSMenu alloc] initWithTitle:@"Cassette"];
 
-	tmp = [NSString stringWithFormat:@"Input tape%C", 0x2026];
-	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAGV(ui_tag_action, ui_action_tape_input)];
-	[submenu addItem:item];
-	[item release];
-	[tmp release];
-
-	tmp = [NSString stringWithFormat:@"Output tape%C", 0x2026];
-	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@"w"];
-	[item setTag:UIMAC_TAGV(ui_tag_action, ui_action_tape_output)];
-	[submenu addItem:item];
-	[item release];
-	[tmp release];
-
-	[submenu addItem:[NSMenuItem separatorItem]];
-
-	item = [[NSMenuItem alloc] initWithTitle:@"Rewind input tape" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAGV(ui_tag_action, ui_action_tape_input_rewind)];
+	tmp = [NSString stringWithFormat:@"Retro Cassette Deck%C", 0x2026];
+	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(showTapeDeck:) keyEquivalent:@"k"];
 	[submenu addItem:item];
 	[item release];
 
 	[submenu addItem:[NSMenuItem separatorItem]];
 
-	item = [[NSMenuItem alloc] initWithTitle:@"Play" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAG(ui_tag_tape_playing)];
+	tmp = [NSString stringWithFormat:@"Insert Cassette%C", 0x2026];
+	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(insertTapeAction:) keyEquivalent:@""];
 	[submenu addItem:item];
 	[item release];
 
-	[submenu addItem:[NSMenuItem separatorItem]];
-
-	item = [[NSMenuItem alloc] initWithTitle:@"Fast loading" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAG(ui_tag_tape_flag_fast)];
+	tmp = [NSString stringWithFormat:@"New Blank Cassette%C", 0x2026];
+	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(newTapeAction:) keyEquivalent:@""];
 	[submenu addItem:item];
 	[item release];
 
-	item = [[NSMenuItem alloc] initWithTitle:@"CAS padding" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAG(ui_tag_tape_flag_pad_auto)];
-	[submenu addItem:item];
-	[item release];
-
-	item = [[NSMenuItem alloc] initWithTitle:@"Rewrite" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAG(ui_tag_tape_flag_rewrite)];
+	item = [[NSMenuItem alloc] initWithTitle:@"Eject Cassette" action:@selector(ejectTapeAction:) keyEquivalent:@""];
 	[submenu addItem:item];
 	[item release];
 
@@ -624,7 +2073,6 @@ static void setup_file_menu(void) {
 		NSString *title = [NSString stringWithFormat:@"Drive %d", drive+1];
 		NSString *key1 = [NSString stringWithFormat:@"%d", drive+1];
 		NSString *key2 = [NSString stringWithFormat:@"%d", drive+5];
-		NSString *tmp;
 
 		submenu = [[NSMenu alloc] initWithTitle:title];
 
@@ -675,77 +2123,40 @@ static void setup_file_menu(void) {
 		[title release];
 	}
 
-	for (int hd = 0; hd < 2; ++hd) {
-		NSString *title = [NSString stringWithFormat:@"HD %d", hd];
-		NSString *tmp;
-
-		submenu = [[NSMenu alloc] initWithTitle:title];
-
-		tmp = [NSString stringWithFormat:@"Attach%C", 0x2026];
-		item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@""];
-		[item setTag:UIMAC_TAGV(ui_tag_hd_filename, hd)];
-		[submenu addItem:item];
-		[item release];
-		[tmp release];
-
-		NSString *subtitle = [NSString stringWithFormat:@"New"];
-		NSMenu *subsubmenu = [[NSMenu alloc] initWithTitle:subtitle];
-		for (int hs = 0; hs < 4; ++hs) {
-
-			tmp = [NSString stringWithFormat:@"%s%C", hd_type_name[hs], 0x2026];
-			item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@""];
-			[item setTag:UIMAC_TAGV(uimac_tag_hd_new, (hd << 4) | hs)];
-			[subsubmenu addItem:item];
-			[item release];
-			[tmp release];
-		}
-
-		item = [[NSMenuItem alloc] initWithTitle:subtitle action:nil keyEquivalent:@""];
-		[item setSubmenu:subsubmenu];
-		[submenu addItem:item];
-		[item release];
-
-		[subtitle release];
-
-		tmp = [NSString stringWithFormat:@"Detach"];
-		item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@""];
-		[item setTag:UIMAC_TAGV(uimac_tag_hd_detach, hd)];
-		[submenu addItem:item];
-		[item release];
-		[tmp release];
-
-		item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
-		[item setSubmenu:submenu];
-		[file_menu addItem:item];
-		[item release];
-
-		[title release];
-	}
-
 	[file_menu addItem:[NSMenuItem separatorItem]];
 
 	submenu = [[NSMenu alloc] initWithTitle:@"Printer"];
 
-	item = [[NSMenuItem alloc] initWithTitle:@"No printer" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_NONE)];
+	item = [[NSMenuItem alloc] initWithTitle:@"Native Print Dialog / PDF…" action:@selector(do_set_state:) keyEquivalent:@""];
+	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_PROMPT)];
 	[submenu addItem:item];
 	[item release];
 
-	tmp = [NSString stringWithFormat:@"Print to file%C", 0x2026];
+	item = [[NSMenuItem alloc] initWithTitle:@"Auto-Save to PDF" action:@selector(do_set_state:) keyEquivalent:@""];
+	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_PDF)];
+	[submenu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Auto-Save to UTF-8 Text File" action:@selector(do_set_state:) keyEquivalent:@""];
+	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_TEXT)];
+	[submenu addItem:item];
+	[item release];
+
+	tmp = [NSString stringWithFormat:@"Raw Output to File%C", 0x2026];
 	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@""];
 	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_FILE)];
 	[submenu addItem:item];
 	[item release];
 	[tmp release];
 
-	item = [[NSMenuItem alloc] initWithTitle:@"Print to pipe" action:@selector(do_set_state:) keyEquivalent:@""];
-	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_PIPE)];
+	item = [[NSMenuItem alloc] initWithTitle:@"Disabled" action:@selector(do_set_state:) keyEquivalent:@""];
+	[item setTag:UIMAC_TAGV(ui_tag_print_destination, PRINTER_DESTINATION_NONE)];
 	[submenu addItem:item];
 	[item release];
 
 	[submenu addItem:[NSMenuItem separatorItem]];
 
-	item = [[NSMenuItem alloc] initWithTitle:@"Flush" action:@selector(do_set_state:) keyEquivalent:@""];
+	item = [[NSMenuItem alloc] initWithTitle:@"Flush Print Buffer Now" action:@selector(do_set_state:) keyEquivalent:@""];
 	[item setTag:UIMAC_TAGV(ui_tag_action, ui_action_print_flush)];
 	[submenu addItem:item];
 	[item release];
@@ -791,6 +2202,51 @@ static void setup_file_menu(void) {
 	[file_menu_item setSubmenu:file_menu];
 	[[NSApp mainMenu] addItem:file_menu_item];
 	[file_menu_item release];
+
+	cocoa_update_recent_menu();
+}
+
+static void setup_edit_menu(void) {
+	NSMenu *edit_menu;
+	NSMenuItem *edit_menu_item;
+	NSMenuItem *item;
+
+	edit_menu = [[NSMenu alloc] initWithTitle:@"Edit"];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
+	[edit_menu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"Z"];
+	[edit_menu addItem:item];
+	[item release];
+
+	[edit_menu addItem:[NSMenuItem separatorItem]];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+	[edit_menu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+	[edit_menu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+	[item setTarget:NSApp];
+	[edit_menu addItem:item];
+	[item release];
+
+	[edit_menu addItem:[NSMenuItem separatorItem]];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+	[edit_menu addItem:item];
+	[item release];
+
+	edit_menu_item = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+	[edit_menu_item setSubmenu:edit_menu];
+	[[NSApp mainMenu] addItem:edit_menu_item];
+	[edit_menu_item release];
+	[edit_menu release];
 }
 
 static NSMenu *view_menu;
@@ -910,43 +2366,16 @@ static void setup_view_menu(void) {
 }
 
 static NSMenu *machine_menu;
-static NSMenu *cartridge_menu;
 static NSMenu *joy_right_menu;
 static NSMenu *joy_left_menu;
 
-/* Create Machine menu */
+/* Create Hardware menu */
 static void setup_hardware_menu(void) {
 	NSMenu *hardware_menu;
 	NSMenuItem *hardware_menu_item;
 	NSMenuItem *item;
-	NSMenu *submenu;
 
 	hardware_menu = [[NSMenu alloc] initWithTitle:@"Hardware"];
-
-	machine_menu = [[NSMenu alloc] initWithTitle:@"Machine"];
-	item = [[NSMenuItem alloc] initWithTitle:@"Machine" action:nil keyEquivalent:@""];
-	[item setSubmenu:machine_menu];
-	[hardware_menu addItem:item];
-	[item release];
-
-	[hardware_menu addItem:[NSMenuItem separatorItem]];
-
-	cartridge_menu = [[NSMenu alloc] initWithTitle:@"Cartridge"];
-	item = [[NSMenuItem alloc] initWithTitle:@"Cartridge" action:nil keyEquivalent:@""];
-	[item setSubmenu:cartridge_menu];
-	[hardware_menu addItem:item];
-	[item release];
-
-	[hardware_menu addItem:[NSMenuItem separatorItem]];
-
-	submenu = [[NSMenu alloc] initWithTitle:@"Keyboard type"];
-	cocoa_update_radio_menu_from_enum(submenu, machine_keyboard_list, ui_tag_keymap);
-	item = [[NSMenuItem alloc] initWithTitle:@"Keyboard type" action:nil keyEquivalent:@""];
-	[item setSubmenu:submenu];
-	[hardware_menu addItem:item];
-	[item release];
-
-	[hardware_menu addItem:[NSMenuItem separatorItem]];
 
 	joy_right_menu = [[NSMenu alloc] initWithTitle:@"Right joystick"];
 	item = [[NSMenuItem alloc] initWithTitle:@"Right joystick" action:nil keyEquivalent:@""];
@@ -977,7 +2406,13 @@ static void setup_hardware_menu(void) {
 	[hardware_menu addItem:item];
 	[item release];
 
-	hardware_menu_item = [[NSMenuItem alloc] initWithTitle:@"Machine" action:nil keyEquivalent:@""];
+	[hardware_menu addItem:[NSMenuItem separatorItem]];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Retro Cassette Deck…" action:@selector(showTapeDeck:) keyEquivalent:@"k"];
+	[hardware_menu addItem:item];
+	[item release];
+
+	hardware_menu_item = [[NSMenuItem alloc] initWithTitle:@"Hardware" action:nil keyEquivalent:@""];
 	[hardware_menu_item setSubmenu:hardware_menu];
 	[[NSApp mainMenu] addItem:hardware_menu_item];
 	[hardware_menu_item release];
@@ -1006,8 +2441,8 @@ static void setup_tool_menu(void) {
 	[tool_menu addItem:item];
 	[item release];
 
-	item = [[NSMenuItem alloc] initWithTitle:@"Keyboard translation" action:@selector(do_set_state:) keyEquivalent:@"z"];
-	[item setTag:UIMAC_TAG(ui_tag_kbd_translate)];
+	item = [[NSMenuItem alloc] initWithTitle:@"kmsCoCo Keyboard Guide..." action:@selector(showKeyboardGuide:) keyEquivalent:@"?"];
+	[item setTarget:NSApp];
 	[tool_menu addItem:item];
 	[item release];
 
@@ -1046,6 +2481,52 @@ static void setup_window_menu(void) {
 	/* Finally give up our references to the objects */
 	[window_menu release];
 	[window_menu_item release];
+}
+
+/* Create Help menu */
+static void setup_help_menu(void) {
+	NSMenu *help_menu;
+	NSMenuItem *help_menu_item;
+	NSMenuItem *item;
+
+	help_menu = [[NSMenu alloc] initWithTitle:@"Help"];
+	[help_menu setAutoenablesItems:NO];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"kmsCoCo Keyboard Guide..." action:@selector(showKeyboardGuide:) keyEquivalent:@"?"];
+	[item setTarget:NSApp];
+	[item setEnabled:YES];
+	[help_menu addItem:item];
+	[item release];
+
+	[help_menu addItem:[NSMenuItem separatorItem]];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Break: Escape" action:nil keyEquivalent:@""];
+	[item setEnabled:NO];
+	[help_menu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Clear: F12 or Home" action:nil keyEquivalent:@""];
+	[item setEnabled:NO];
+	[help_menu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Backspace: Left arrow" action:nil keyEquivalent:@""];
+	[item setEnabled:NO];
+	[help_menu addItem:item];
+	[item release];
+
+	item = [[NSMenuItem alloc] initWithTitle:@"Caps Lock: Caps Lock key (or Shift+0)" action:nil keyEquivalent:@""];
+	[item setEnabled:NO];
+	[help_menu addItem:item];
+	[item release];
+
+	help_menu_item = [[NSMenuItem alloc] initWithTitle:@"Help" action:nil keyEquivalent:@""];
+	[help_menu_item setSubmenu:help_menu];
+	[[NSApp mainMenu] addItem:help_menu_item];
+	[help_menu_item release];
+
+	[NSApp setHelpMenu:help_menu];
+	[help_menu release];
 }
 
 #if 0
@@ -1094,8 +2575,14 @@ static void CustomApplicationMain(int argc, char **argv) {
 	if (!gFinderLaunch)  /* MacOS is passing command line args. */
 		return FALSE;
 
-	if (gCalledAppMainline)  /* app has started, ignore this document. */
+	if (gCalledAppMainline) {
+		const char *cpath = [filename UTF8String];
+		if (cpath) {
+			xroar_load_file_by_type(cpath, 1);
+			return TRUE;
+		}
 		return FALSE;
+	}
 
 	temparg = [filename UTF8String];
 	arglen = SDL_strlen(temparg) + 1;
@@ -1132,7 +2619,7 @@ static void CustomApplicationMain(int argc, char **argv) {
 	// have to focus something else then return).  I'm sure there's a good
 	// reason for that.
 	[NSApp activateIgnoringOtherApps:YES];
-	[XRoarApplication registerUserDefaults];
+	[kmsCoCoApplication registerUserDefaults];
 }
 
 @end
@@ -1141,17 +2628,19 @@ static void CustomApplicationMain(int argc, char **argv) {
 void cocoa_register_app(void) {
 
 	// Ensure the application object is initialised
-	[XRoarApplication sharedApplication];
+	[kmsCoCoApplication sharedApplication];
 	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
 	// Set up the menubar
 	[NSApp setMainMenu:[[NSMenu alloc] init]];
 	setApplicationMenu();
 	setup_file_menu();
+	setup_edit_menu();
 	setup_view_menu();
 	setup_hardware_menu();
 	setup_tool_menu();
 	setup_window_menu();
+	setup_help_menu();
 
 	[NSApp finishLaunching];
 
@@ -1229,6 +2718,8 @@ static void *ui_cocoa_new(void *cfg) {
 	ui->update_machine_menu = DELEGATE_AS0(void, cocoa_update_machine_menu, uimac);
 	ui->update_cartridge_menu = DELEGATE_AS0(void, cocoa_update_cartridge_menu, uimac);
 	ui->update_joystick_menus = DELEGATE_AS0(void, cocoa_update_joystick_menus, uimac);
+	ui->update_recent_menu = DELEGATE_AS0(void, cocoa_update_recent_menu_delegate, uimac);
+	ui->printer_job_completed = DELEGATE_AS2(void, charcp, size_t, cocoa_printer_job_completed, uimac);
 
 	// Register with messenger
 	uimac->msgr_client_id = messenger_client_register();
@@ -1239,6 +2730,8 @@ static void *ui_cocoa_new(void *cfg) {
 	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_tape_flag_pad_auto, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
 	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_tape_flag_rewrite, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
 	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_tape_playing, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
+	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_tape_input_filename, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
+	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_tape_motor, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
 	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_disk_write_enable, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
 	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_disk_write_back, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
 	ui_messenger_join_group(uimac->msgr_client_id, ui_tag_cmp_fs, MESSENGER_NOTIFY_DELEGATE(cocoa_ui_state_notify, uimac));
@@ -1270,6 +2763,8 @@ static void *ui_cocoa_new(void *cfg) {
 		return NULL;
 	}
 
+	cocoa_check_coco_roms();
+
 	return uisdl2;
 }
 
@@ -1279,29 +2774,7 @@ static void ui_cocoa_free(void *sptr) {
 }
 
 static void cocoa_update_machine_menu(void *sptr) {
-	struct ui_macosx_interface *uimac = sptr;
-	(void)uimac;
-
-	// Get list of machine configs
-	struct slist *mcl = machine_config_list();
-
-	// Remove old entries
-	while ([machine_menu numberOfItems] > 0) {
-		[machine_menu removeItem:[machine_menu itemAtIndex:0]];
-	}
-
-	// Add entries
-	NSMenuItem *item;
-	for (struct slist *iter = mcl; iter; iter = iter->next) {
-		struct machine_config *mc = iter->data;
-		NSString *description = [[NSString alloc] initWithUTF8String:mc->description];
-		item = [[NSMenuItem alloc] initWithTitle:description action:@selector(do_set_state:) keyEquivalent:@""];
-		[item setTag:UIMAC_TAGV(ui_tag_machine, mc->id)];
-		[item setOnStateImage:[NSImage imageNamed:@"NSMenuRadio"]];
-		[description release];
-		[machine_menu addItem:item];
-		[item release];
-	}
+	(void)sptr;
 }
 
 static void cocoa_update_cartridge_menu(void *sptr) {
@@ -1325,8 +2798,17 @@ static void cocoa_update_cartridge_menu(void *sptr) {
 
 	// Add entries
 	NSMenuItem *item;
+	NSString *tmp = [NSString stringWithFormat:@"Run cartridge ROM%C", 0x2026];
+	item = [[NSMenuItem alloc] initWithTitle:tmp action:@selector(do_set_state:) keyEquivalent:@""];
+	[item setTag:UIMAC_TAGV(ui_tag_action, ui_action_cart_insert)];
+	[cartridge_menu addItem:item];
+	[item release];
+
+	[cartridge_menu addItem:[NSMenuItem separatorItem]];
+
 	item = [[NSMenuItem alloc] initWithTitle:@"None" action:@selector(do_set_state:) keyEquivalent:@""];
 	[item setTag:UIMAC_TAGV(ui_tag_cartridge, 0)];
+	[item setOnStateImage:[NSImage imageNamed:@"NSMenuRadio"]];
 	[cartridge_menu addItem:item];
 	[item release];
 	for (struct slist *iter = ccl; iter; iter = iter->next) {
@@ -1416,6 +2898,16 @@ static void cocoa_ui_state_notify(void *sptr, int tag, void *smsg) {
 
 	// Cassettes
 
+	case ui_tag_tape_input_filename:
+		if (data) {
+			[[kmsCoCoTapeDeckController sharedController] insertTape:(const char *)data];
+		}
+		break;
+
+	case ui_tag_tape_motor:
+		[[kmsCoCoTapeDeckController sharedController] updateStatus];
+		break;
+
 	case ui_tag_tape_flag_fast:
 		uimac->tape.fast = value;
 		break;
@@ -1430,6 +2922,7 @@ static void cocoa_ui_state_notify(void *sptr, int tag, void *smsg) {
 
 	case ui_tag_tape_playing:
 		uimac->tape.playing = value;
+		[[kmsCoCoTapeDeckController sharedController] updateStatus];
 		break;
 
 	// Disk

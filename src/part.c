@@ -94,41 +94,12 @@ const struct partdb_entry *partdb[] = {
 	&clock_group_part,
 
 #ifdef WANT_MACHINE_ARCH_DRAGON
-	(const struct partdb_entry *)&dragon32_part,
-	(const struct partdb_entry *)&dragon64_part,
-	(const struct partdb_entry *)&dragonpro_part,
 	(const struct partdb_entry *)&coco_part,
-	(const struct partdb_entry *)&deluxecoco_part,
-#endif
-
-#ifdef WANT_MACHINE_ARCH_COCO3
-	(const struct partdb_entry *)&coco3_part,
-#endif
-
-#ifdef WANT_MACHINE_ARCH_MC10
-	(const struct partdb_entry *)&mc10_part,
 #endif
 
 #ifdef WANT_CART_ARCH_DRAGON
 	(const struct partdb_entry *)&cart_rom_part,
-	(const struct partdb_entry *)&deltados_part,
-	(const struct partdb_entry *)&dragondos_part,
-	(const struct partdb_entry *)&gmc_part,
-	(const struct partdb_entry *)&orch90_part,
 	(const struct partdb_entry *)&rsdos_part,
-	(const struct partdb_entry *)&idecart_part,
-#ifndef HAVE_WASM
-#ifdef WANT_EXPERIMENTAL
-	(const struct partdb_entry *)&cocosdc_part,
-	(const struct partdb_entry *)&ikon_part,
-#endif
-#endif
-	(const struct partdb_entry *)&mooh_part,
-#ifndef HAVE_WASM
-	(const struct partdb_entry *)&mpi_part,
-	(const struct partdb_entry *)&nx32_part,
-	(const struct partdb_entry *)&race_part,
-#endif
 #endif
 
 	&ram_part,

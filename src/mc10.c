@@ -977,6 +977,8 @@ static void *mc10_get_interface(struct machine *m, const char *ifname) {
 		return mp->keyboard.interface;
 	} else if (0 == strcmp(ifname, "printer")) {
 		return mp->printer_interface;
+	} else if (0 == strcmp(ifname, "sound")) {
+		return mp->snd;
 	} else if (0 == strcmp(ifname, "tape-update-audio")) {
 		return &mp->tape_update_audio;
 	}

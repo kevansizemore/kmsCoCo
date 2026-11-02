@@ -85,6 +85,16 @@ struct ui_interface {
 
 	DELEGATE_T0(void) update_joystick_menus;
 
+	// Create or update recent media menu.
+	//
+	// Called at startup, and whenever recent media list changes.
+
+	DELEGATE_T0(void) update_recent_menu;
+
+	// Called when a printer job has finished and is ready for output.
+
+	DELEGATE_T2(void, charcp, size_t) printer_job_completed;
+
 	// Interface to the file requester initialised by the UI.
 
 	struct filereq_interface *filereq_interface;
@@ -393,6 +403,7 @@ enum ui_action {
 	ui_action_file_run,
 	ui_action_file_save_snapshot,
 	ui_action_file_screenshot,
+	ui_action_cart_insert,
 	ui_action_tape_input,
 	ui_action_tape_output,
 	ui_action_tape_play_pause,

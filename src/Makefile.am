@@ -4,19 +4,19 @@ bin_PROGRAMS =
 EXTRA_DIST =
 AM_CPPFLAGS = -I$(top_builddir)
 
-bin_PROGRAMS += xroar
+bin_PROGRAMS += kmscoco
 
 BUILT_SOURCES =
 CLEANFILES =
 
 # Common sources
 
-xroar_CFLAGS =
-xroar_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/portalib
-xroar_OBJCFLAGS =
-xroar_LDADD = $(top_builddir)/portalib/libporta.a -lm
+kmscoco_CFLAGS =
+kmscoco_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/portalib
+kmscoco_OBJCFLAGS =
+kmscoco_LDADD = $(top_builddir)/portalib/libporta.a -lm
 
-xroar_SOURCES = \
+kmscoco_SOURCES = \
 	ao.c ao.h \
 	auto_kbd.c auto_kbd.h \
 	ay891x.c ay891x.h \
@@ -60,6 +60,7 @@ xroar_SOURCES = \
 	sound.c sound.h \
 	symtab.c symtab.h \
 	tape.c tape.h \
+	tape_deck.c tape_deck.h \
 	tape_cas.c \
 	tape_sndfile.c \
 	ui.c ui.h \
@@ -73,7 +74,7 @@ xroar_SOURCES = \
 	xroar.c xroar.h
 
 if MACHINE_ARCH_DRAGON
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	dragon/coco.c dragon/coco.h \
 	dragon/immunity.c dragon/immunity.h \
 	dragon/deluxecoco.c \
@@ -84,52 +85,52 @@ xroar_SOURCES += \
 endif
 
 if MACHINE_ARCH_COCO3
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	coco3.c
 endif
 
 if MACHINE_ARCH_MC10
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc10.c
 endif
 
 if PART_MC6801
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc6801/mc6801.c mc6801/mc6801.h
 endif
 
 if PART_MC6809
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc6809/hd6309.c mc6809/hd6309.h \
 	mc6809/mc6809.c mc6809/mc6809.h
 endif
 
 if PART_MC6821
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc6821.c mc6821.h
 endif
 
 if PART_MC6847
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc6847/font-6847.c mc6847/font-6847.h \
 	mc6847/font-6847t1.c mc6847/font-6847t1.h \
 	mc6847/mc6847.c mc6847/mc6847.h
 endif
 
 if PART_MC6883
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc6883.c mc6883.h \
 	samx8.c
 endif
 
 if PART_TCC1014
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	tcc1014/font-gime.c tcc1014/font-gime.h \
 	tcc1014/tcc1014.c tcc1014/tcc1014.h
 endif
 
 if CART_ARCH_DRAGON
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	deltados.c \
 	dragondos.c \
 	gmc.c \
@@ -146,14 +147,14 @@ xroar_SOURCES += \
 	wd279x.c wd279x.h
 
 if EXPERIMENTAL
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	cocosdc.c \
 	ikon.c
 endif
 endif
 
 if CART_ARCH_MC10
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mcx128.c
 endif
 
@@ -162,7 +163,7 @@ BUILT_SOURCES += \
 	mc6847/font-6847t1.c mc6847/font-6847t1.h \
 	tcc1014/font-gime.c tcc1014/font-gime.h
 
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	main_unix.c
 
 EXTRA_DIST += \
@@ -218,23 +219,23 @@ EXTRA_DIST += \
 # ROM paths
 
 if WASM
-xroar_CFLAGS += -DROMPATH=\".\"
-xroar_CFLAGS += -DCONFPATH=\".\"
+kmscoco_CFLAGS += -DROMPATH=\".\"
+kmscoco_CFLAGS += -DCONFPATH=\".\"
 else
 if MINGW
-xroar_CFLAGS += -DAUTOSAVE_PREFIX=\"%LOCALAPPDATA%\\\\XRoar\"
-xroar_CFLAGS += -DROMPATH=\":%LOCALAPPDATA%\\\\XRoar\\\\roms:%USERPROFILE%\\\\Documents\\\\XRoar\\\\roms:%USERPROFILE%\\\\AppData\\\\Roaming\\\\XRoar\\\\roms\"
-xroar_CFLAGS += -DCONFPATH=\":%LOCALAPPDATA%\\\\XRoar:%USERPROFILE%\\\\Documents\\\\XRoar:%USERPROFILE%\\\\AppData\\\\Roaming\\\\XRoar\"
+kmscoco_CFLAGS += -DAUTOSAVE_PREFIX=\"%LOCALAPPDATA%\\\\kmsCoCo\"
+kmscoco_CFLAGS += -DROMPATH=\":%LOCALAPPDATA%\\\\kmsCoCo\\\\roms:%LOCALAPPDATA%\\\\XRoar\\\\roms:%USERPROFILE%\\\\Documents\\\\kmsCoCo\\\\roms:%USERPROFILE%\\\\Documents\\\\XRoar\\\\roms:%USERPROFILE%\\\\AppData\\\\Roaming\\\\kmsCoCo\\\\roms:%USERPROFILE%\\\\AppData\\\\Roaming\\\\XRoar\\\\roms\"
+kmscoco_CFLAGS += -DCONFPATH=\":%LOCALAPPDATA%\\\\kmsCoCo:%USERPROFILE%\\\\Documents\\\\kmsCoCo:%USERPROFILE%\\\\AppData\\\\Roaming\\\\kmsCoCo\"
 else
 if UI_COCOA
-xroar_CFLAGS += -DAUTOSAVE_PREFIX=\"~/Library/XRoar\"
-xroar_OBJCFLAGS += -DAUTOSAVE_PREFIX=\"~/Library/XRoar\"
-xroar_CFLAGS += -DROMPATH=\"~/Library/XRoar/roms:~/.xroar/roms:$(datadir)/xroar/roms:\"
-xroar_CFLAGS += -DCONFPATH=\"~/Library/XRoar:~/.xroar:$(sysconfdir):$(datadir)/xroar\"
+kmscoco_CFLAGS += -DAUTOSAVE_PREFIX=\"~/Library/kmsCoCo\"
+kmscoco_OBJCFLAGS += -DAUTOSAVE_PREFIX=\"~/Library/kmsCoCo\"
+kmscoco_CFLAGS += -DROMPATH=\"~/Library/kmsCoCo/roms:~/.kmscoco/roms:$(datadir)/kmscoco/roms:~/Library/XRoar/roms:~/.xroar/roms:$(datadir)/xroar/roms:\"
+kmscoco_CFLAGS += -DCONFPATH=\"~/Library/kmsCoCo:~/.kmscoco:$(sysconfdir):$(datadir)/kmscoco\"
 else
-xroar_CFLAGS += -DAUTOSAVE_PREFIX=\"~/.xroar\"
-xroar_CFLAGS += -DROMPATH=\"~/.xroar/roms:$(datadir)/xroar/roms:\"
-xroar_CFLAGS += -DCONFPATH=\"~/.xroar:$(sysconfdir):$(datadir)/xroar\"
+kmscoco_CFLAGS += -DAUTOSAVE_PREFIX=\"~/.kmscoco\"
+kmscoco_CFLAGS += -DROMPATH=\"~/.kmscoco/roms:$(datadir)/kmscoco/roms:~/.xroar/roms:$(datadir)/xroar/roms:\"
+kmscoco_CFLAGS += -DCONFPATH=\"~/.kmscoco:$(sysconfdir):$(datadir)/kmscoco\"
 endif
 endif
 endif
@@ -242,43 +243,43 @@ endif
 # Common X11 support
 
 if X11
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	x11/hkbd_x11.c x11/hkbd_x11.h \
 	x11/hkbd_x11_keycode_tables.h
-xroar_CFLAGS += $(X11_CFLAGS)
-xroar_LDADD += $(X11_LIBS)
+kmscoco_CFLAGS += $(X11_CFLAGS)
+kmscoco_LDADD += $(X11_LIBS)
 endif
 
 # WebAssembly support
 
 if WASM
-xroar_CFLAGS += $(WASM_CFLAGS)
-xroar_LDADD += $(WASM_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(WASM_CFLAGS)
+kmscoco_LDADD += $(WASM_LIBS)
+kmscoco_SOURCES += \
 	wasm/wasm.c wasm/wasm.h \
 	wasm/js_wasm.c
-EXTRA_xroar_DEPENDENCIES = \
+EXTRA_kmscoco_DEPENDENCIES = \
 	wasm/exported_functions
 endif
 EXTRA_DIST += wasm/exported_functions
-CLEANFILES += xroar.wasm xroar.js
+CLEANFILES += kmscoco.wasm kmscoco.js
 
 # Common OpenGL support
 
 if OPENGL
-xroar_CFLAGS += $(GL_CFLAGS)
-xroar_LDADD += $(GL_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(GL_CFLAGS)
+kmscoco_LDADD += $(GL_LIBS)
+kmscoco_SOURCES += \
 	vo_opengl.c vo_opengl.h
 endif
 
 # GTK+ 3 user interface
 
 if GTK3
-xroar_CFLAGS += $(GTK3_CFLAGS)
-xroar_LDADD += $(GTK3_LIBS)
+kmscoco_CFLAGS += $(GTK3_CFLAGS)
+kmscoco_LDADD += $(GTK3_LIBS)
 if OPENGL
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	gtk3/about.c \
 	gtk3/common.c gtk3/common.h \
 	gtk3/dialog.c gtk3/dialog.h \
@@ -292,7 +293,7 @@ xroar_SOURCES += \
 	gtk3/video_options.c gtk3/video_options.h \
 	gtk3/vo_gtk3.c
 endif
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	gtk3/filereq_gtk3.c
 
 BUILT_SOURCES += \
@@ -328,10 +329,10 @@ endif
 # GTK+ 2.0 user interface
 
 if GTK2
-xroar_CFLAGS += $(GTK2_CFLAGS)
-xroar_LDADD += $(GTK2_LIBS)
+kmscoco_CFLAGS += $(GTK2_CFLAGS)
+kmscoco_LDADD += $(GTK2_LIBS)
 if OPENGL
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	gtk2/about.c \
 	gtk2/common.c gtk2/common.h \
 	gtk2/dialog.c gtk2/dialog.h \
@@ -344,16 +345,16 @@ xroar_SOURCES += \
 	gtk2/ui_gtk2.c \
 	gtk2/video_options.c gtk2/video_options.h
 endif
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	gtk2/filereq_gtk2.c
 
 BUILT_SOURCES += \
 	gtk2/gtk2.gresource.c
 
 if GTKGL
-xroar_CFLAGS += $(GTKGL_CFLAGS)
-xroar_LDADD += $(GTKGL_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(GTKGL_CFLAGS)
+kmscoco_LDADD += $(GTKGL_LIBS)
+kmscoco_SOURCES += \
 	gtk2/vo_gtkgl.c
 endif
 endif
@@ -388,9 +389,9 @@ endif
 
 if UI_SDL3
 
-xroar_CFLAGS += $(SDL3_CFLAGS)
-xroar_LDADD += $(SDL3_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(SDL3_CFLAGS)
+kmscoco_LDADD += $(SDL3_LIBS)
+kmscoco_SOURCES += \
 	sdl3/ao_sdl3.c \
 	sdl3/common.c sdl3/common.h \
 	sdl3/joystick_sdl3.c \
@@ -399,7 +400,7 @@ xroar_SOURCES += \
 	sdl3/vo_sdl3.c
 
 if X11
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	sdl3/sdl_x11.c
 endif
 
@@ -409,9 +410,9 @@ endif
 
 if UI_SDL2
 
-xroar_CFLAGS += $(SDL_CFLAGS)
-xroar_LDADD += $(SDL_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(SDL_CFLAGS)
+kmscoco_LDADD += $(SDL_LIBS)
+kmscoco_SOURCES += \
 	sdl2/ao_sdl2.c \
 	sdl2/common.c sdl2/common.h \
 	sdl2/joystick_sdl2.c \
@@ -420,7 +421,7 @@ xroar_SOURCES += \
 	sdl2/vo_sdl2.c
 
 if X11
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	sdl2/sdl_x11.c
 endif
 
@@ -430,102 +431,104 @@ endif
 
 if UI_SDL2
 if UI_COCOA
-xroar_CFLAGS += $(COCOA_CFLAGS)
-xroar_OBJCFLAGS += $(COCOA_CFLAGS) $(SDL_CFLAGS)
-xroar_LDADD += $(COCOA_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(COCOA_CFLAGS)
+kmscoco_OBJCFLAGS += $(COCOA_CFLAGS) $(SDL_CFLAGS)
+kmscoco_LDADD += $(COCOA_LIBS)
+kmscoco_SOURCES += \
 	macosx/filereq_cocoa.m \
 	macosx/hkbd_darwin.c macosx/hkbd_darwin.h \
+	macosx/tape_deck_cocoa.m macosx/tape_deck_cocoa.h \
 	macosx/ui_macosx.m macosx/ui_macosx.h
 endif
 endif
 
 EXTRA_DIST += \
 	macosx/Info.plist.in \
+	macosx/kmscoco.icns \
 	macosx/xroar.icns
 
 # ALSA audio
 if AO_ALSA
-xroar_CFLAGS += $(ALSA_CFLAGS)
-xroar_LDADD += $(ALSA_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(ALSA_CFLAGS)
+kmscoco_LDADD += $(ALSA_LIBS)
+kmscoco_SOURCES += \
 	alsa/ao_alsa.c
 endif
 
 # OSS audio
 if AO_OSS
-xroar_CFLAGS += $(OSS_CFLAGS)
-xroar_LDADD += $(OSS_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(OSS_CFLAGS)
+kmscoco_LDADD += $(OSS_LIBS)
+kmscoco_SOURCES += \
 	oss/ao_oss.c
 endif
 
 # PulseAudio
 if AO_PULSE
-xroar_CFLAGS += $(PULSE_CFLAGS)
-xroar_LDADD += $(PULSE_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(PULSE_CFLAGS)
+kmscoco_LDADD += $(PULSE_LIBS)
+kmscoco_SOURCES += \
 	pulseaudio/ao_pulse.c
 endif
 
 # Mac OS X CoreAudio
 if AO_COREAUDIO
-xroar_CFLAGS += $(COREAUDIO_CFLAGS)
-xroar_LDADD += $(COREAUDIO_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(COREAUDIO_CFLAGS)
+kmscoco_LDADD += $(COREAUDIO_LIBS)
+kmscoco_SOURCES += \
 	macosx/ao_macosx.c
 endif
 
 # JACK audio driver
 if AO_JACK
-xroar_CFLAGS += $(JACK_CFLAGS)
-xroar_LDADD += $(JACK_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(JACK_CFLAGS)
+kmscoco_LDADD += $(JACK_LIBS)
+kmscoco_SOURCES += \
 	jack/ao_jack.c
 endif
 
 # Null audio driver
 if AO_NULL
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	null/ao_null.c
 endif
 
 # libsndfile support
 if SNDFILE
-xroar_CFLAGS += $(SNDFILE_CFLAGS)
-xroar_LDADD += $(SNDFILE_LIBS)
+kmscoco_CFLAGS += $(SNDFILE_CFLAGS)
+kmscoco_LDADD += $(SNDFILE_LIBS)
 endif
 
 # libpng support
 if PNG
-xroar_CFLAGS += $(PNG_CFLAGS)
-xroar_LDADD += $(PNG_LIBS)
+kmscoco_CFLAGS += $(PNG_CFLAGS)
+kmscoco_LDADD += $(PNG_LIBS)
 endif
 
 if ZLIB
-xroar_CFLAGS += $(ZLIB_CFLAGS)
-xroar_LDADD += $(ZLIB_LIBS)
+kmscoco_CFLAGS += $(ZLIB_CFLAGS)
+kmscoco_LDADD += $(ZLIB_LIBS)
 endif
 
 # Linux evdev joysticks
 if EVDEV
-xroar_CFLAGS += $(EVDEV_CFLAGS)
-xroar_LDADD += $(EVDEV_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(EVDEV_CFLAGS)
+kmscoco_LDADD += $(EVDEV_LIBS)
+kmscoco_SOURCES += \
 	evdev/js_evdev.c
 endif
 
 # Linux joydev joysticks
 if JOYDEV
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	joydev/js_joydev.c
 endif
 
 # MinGW
 if MINGW
-xroar_CFLAGS += $(MINGW_CFLAGS)
-xroar_LDADD += $(MINGW_LIBS)
-xroar_SOURCES += \
+kmscoco_CFLAGS += $(MINGW_CFLAGS)
+kmscoco_LDADD += $(MINGW_LIBS)
+kmscoco_SOURCES += \
 	windows32/about.c \
 	windows32/common_windows32.c windows32/common_windows32.h \
 	windows32/dialog.c windows32/dialog.h \
@@ -570,7 +573,7 @@ EXTRA_DIST += \
 
 # Trace mode support
 if TRACE
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	mc6801/mc6801_trace.c mc6801/mc6801_trace.h \
 	mc6809/mc6809_trace.c mc6809/mc6809_trace.h \
 	mc6809/hd6309_trace.c mc6809/hd6309_trace.h
@@ -578,21 +581,26 @@ endif
 
 if PTHREADS
 
-xroar_CFLAGS += $(PTHREADS_CFLAGS)
-xroar_LDADD += $(PTHREADS_LIBS)
+kmscoco_CFLAGS += $(PTHREADS_CFLAGS)
+kmscoco_LDADD += $(PTHREADS_LIBS)
 
 if GDB
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	gdb.c gdb.h
 endif
 
 endif
 
 if TRE
-xroar_LDADD += $(TRE_LIBS)
+kmscoco_LDADD += $(TRE_LIBS)
 endif
 
 if FILEREQ_CLI
-xroar_SOURCES += \
+kmscoco_SOURCES += \
 	filereq_cli.c
 endif
+
+all-local:
+	ln -sf kmscoco xroar
+
+CLEANFILES += xroar

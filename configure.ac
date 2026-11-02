@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.69])
-AC_INIT([xroar],[1.13.0.dev])
+AC_INIT([kmsCoCo],[1.13.0.dev],[],[kmscoco])
 AM_INIT_AUTOMAKE([foreign])
 AM_SILENT_RULES([yes])
 
@@ -905,9 +905,9 @@ RC_VERSION="$RC_VER_MAJOR.$RC_VER_MINOR.$RC_REV_MAJOR.$RC_REV_MINOR"
 RC_VERSION3="$RC_VER_MAJOR.$RC_VER_MINOR.$RC_REV_MAJOR"
 if test -z "$PACKAGE_TEXT"; then
 	if test "x$enable_snapshot" = "xyes"; then
-		PACKAGE_TEXT="XRoar snapshot $RC_VERSION3"
+		PACKAGE_TEXT="kmsCoCo snapshot $RC_VERSION3"
 	else
-		PACKAGE_TEXT="XRoar $VERSION"
+		PACKAGE_TEXT="kmsCoCo $VERSION"
 	fi
 fi
 test -z "$PACKAGE_YEAR" && PACKAGE_YEAR=`date +%Y`

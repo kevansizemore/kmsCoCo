@@ -68,6 +68,7 @@ struct sound_interface_private {
 
 	float dac_level;
 	float tape_level;
+	bool tape_monitor;
 
 	// Audio circuit state
 	struct {
@@ -472,6 +473,9 @@ void sound_update(struct sound_interface *sndp) {
 				if (non_muxed_output) {
 					mix_sample += *(non_muxed_output++);
 				}
+				if (snd->tape_monitor && (snd->tape_level != 0.5f)) {
+					mix_sample += (snd->tape_level - 0.5f) * 0.40f;
+				}
 				for (int j = 0; j < snd->output_nchannels; j++) {
 					*(ptr++) = (mix_sample + snd->current.external[j]) * snd->gain;
 				}
@@ -609,8 +613,14 @@ void sound_set_dac_level(struct sound_interface *sndp, float level) {
 void sound_set_tape_level(struct sound_interface *sndp, float level) {
 	struct sound_interface_private *snd = (struct sound_interface_private *)sndp;
 	snd->tape_level = level;
-	if (snd->next.mux_enabled && snd->next.mux_source == SOURCE_TAPE)
+	if ((snd->next.mux_enabled && snd->next.mux_source == SOURCE_TAPE) || snd->tape_monitor)
 		sound_update(sndp);
+}
+
+void sound_set_tape_monitor(struct sound_interface *sndp, bool enabled) {
+	struct sound_interface_private *snd = (struct sound_interface_private *)sndp;
+	snd->tape_monitor = enabled;
+	sound_update(sndp);
 }
 
 void sound_set_external_left(struct sound_interface *sndp, float level) {

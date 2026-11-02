@@ -190,6 +190,10 @@ static void setup_file_menu(struct ui_windows32_interface *uiw32) {
 	AppendMenu(file_menu, MF_STRING, UIW32_TAGV(ui_tag_action, ui_action_file_load), "&Load...");
 
 	AppendMenu(file_menu, MF_SEPARATOR, 0, NULL);
+	uiw32->cartridge_menu = CreatePopupMenu();
+	AppendMenu(file_menu, MF_STRING | MF_POPUP, (UINT_PTR)uiw32->cartridge_menu, "&Cartridge");
+
+	AppendMenu(file_menu, MF_SEPARATOR, 0, NULL);
 	AppendMenu(file_menu, MF_STRING, UIW32_TAG(ui_tag_tape_dialog), "Cassette &tapes");
 
 	AppendMenu(file_menu, MF_SEPARATOR, 0, NULL);
@@ -257,10 +261,6 @@ static void setup_hardware_menu(struct ui_windows32_interface *uiw32) {
 	AppendMenu(hardware_menu, MF_STRING | MF_POPUP, (UINT_PTR)submenu, "Machine");
 
 	AppendMenu(hardware_menu, MF_SEPARATOR, 0, NULL);
-	uiw32->cartridge_menu = submenu = CreatePopupMenu();
-	AppendMenu(hardware_menu, MF_STRING | MF_POPUP, (UINT_PTR)submenu, "Cartridge");
-
-	AppendMenu(hardware_menu, MF_SEPARATOR, 0, NULL);
 	submenu = CreatePopupMenu();
 	AppendMenu(hardware_menu, MF_STRING | MF_POPUP, (UINT_PTR)submenu, "Keyboard type");
 	uiw32_update_radio_menu_from_enum(submenu, machine_keyboard_list, ui_tag_keymap);
@@ -293,7 +293,6 @@ static void setup_tool_menu(struct ui_windows32_interface *uiw32) {
 	AppendMenu(tool_menu, MF_STRING | MF_POPUP, (UINT_PTR)submenu, "Keyboard lan&guage");
 	uiw32_update_radio_menu_from_enum(submenu, hkbd_lang_list, ui_tag_hkbd_lang);
 
-	AppendMenu(tool_menu, MF_STRING, UIW32_TAG(ui_tag_kbd_translate), "&Keyboard translation");
 	AppendMenu(tool_menu, MF_STRING, UIW32_TAG(ui_tag_ratelimit_latch), "&Rate limit");
 
 	AppendMenu(uiw32->top_menu, MF_STRING | MF_POPUP, (UINT_PTR)tool_menu, "&Tool");
@@ -351,6 +350,8 @@ static void windows32_update_cartridge_menu(void *sptr) {
 		;
 
 	// Add new entries
+	AppendMenu(uiw32->cartridge_menu, MF_STRING, UIW32_TAGV(ui_tag_action, ui_action_cart_insert), "Run &cartridge ROM...");
+	AppendMenu(uiw32->cartridge_menu, MF_SEPARATOR, 0, NULL);
 	AppendMenu(uiw32->cartridge_menu, MF_STRING, UIW32_TAGV(ui_tag_cartridge, 0), "None");
 	uiw32->max_cartridge_id = 0;
 	for (struct slist *iter = ccl; iter; iter = iter->next) {
@@ -468,6 +469,15 @@ static bool SDLCALL sdl_windows_message_hook(void *sptr, MSG *msg) {
 			xroar_screenshot();
 			break;
 #endif
+		case ui_action_cart_insert:
+			{
+				char *filename = DELEGATE_CALL(xroar.ui_interface->filereq_interface->load_filename, "Run cartridge ROM");
+				if (filename) {
+					xroar_load_file_by_type(filename, 1);
+					free(filename);
+				}
+			}
+			break;
 
 		case ui_action_joystick_swap:
 			ui_update_state(-1, ui_tag_joystick_cycle, 1, NULL);

@@ -1,11 +1,19 @@
 *~
 *.swp
+.DS_Store
+*/.DS_Store
+**/.DS_Store
+
 ## debian build rules
 /debian/
-## autoconf files
+
+## autoconf & build files
 .deps/
+**/.deps/
 Makefile
 Makefile.in
+**/Makefile
+**/Makefile.in
 /aclocal.m4
 /ar-lib
 /autom4te.cache/
@@ -23,3 +31,20 @@ Makefile.in
 /missing
 /stamp-h1
 /tags
+*.o
+*.a
+*.obj
+*.exe
+src/kmscoco
+src/kmscoco.exe
+src/xroar
+src/xroar.exe
+
+## Packaging & release archives
+*.app
+*.app/
+*.dmg
+*.zip
+*.tar.gz
+dist/
+dist-*/

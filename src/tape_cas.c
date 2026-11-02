@@ -289,11 +289,15 @@ static struct tape *do_tape_cas_open(const char *filename,
 			cue_add_raw_section(cas, filesize, 0, NULL);
 		}
 		// if nothing there produced any CUE data, and we're reading,
-		// we won't know what to do with this tape, so bail
+		// we won't know what to do with this tape, so bail (unless empty file)
 		if (!writing && !cas->cue.list) {
-			cas_close(t);
-			LOG_MOD_WARN(mod, "%s: failed to read CUE data\n", filename);
-			return NULL;
+			if (filesize == 0) {
+				cue_add_silence(cas, 100);
+			} else {
+				cas_close(t);
+				LOG_MOD_WARN(mod, "%s: failed to read CUE data\n", filename);
+				return NULL;
+			}
 		}
 	}
 

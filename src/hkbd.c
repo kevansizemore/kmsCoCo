@@ -1026,6 +1026,7 @@ static struct {
 
 	// Not so common
 	{ hk_scan_Clear, DSCAN_CLEAR, 1 },
+	{ hk_scan_F12, DSCAN_CLEAR, 1 },
 
 	// Cursor keys
 	{ hk_scan_Up, DSCAN_UP, 1 },
@@ -1039,7 +1040,6 @@ static struct {
 	// CoCo 3
 	//{ SDL_SCANCODE_MODE, DSCAN_ALT, 1 },  // _MODE ???
 	{ hk_scan_Alt_L, DSCAN_ALT, 1 },
-	{ hk_scan_Caps_Lock, DSCAN_CTRL, 1 },
 	{ hk_scan_Super_L, DSCAN_CTRL, 1 },
 	{ hk_scan_Super_R, DSCAN_CTRL, 1 },
 	{ hk_scan_F1, DSCAN_F1, 1 },
@@ -1117,6 +1117,7 @@ bool hkbd_js_keyrelease(uint8_t code);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 void hk_init(void) {
+	hkbd.translate = 1;
 	// Register with messenger
 	hkbd.msgr_client_id = messenger_client_register();
 
@@ -1388,7 +1389,10 @@ void hk_scan_press(uint8_t code) {
 	// are used directly.  There are a few special supplementary cases.
 	if (hkbd.translate) {
 		unsigned unicode = sym;
-		if (shift && (sym == hk_sym_BackSpace || sym == hk_sym_Delete)) {
+		if (code == hk_scan_Caps_Lock || sym == hk_sym_Caps_Lock) {
+			// Host caps lock -> CoCo lowercase/uppercase toggle (Shift+0)
+			unicode = DKBD_U_CAPS_LOCK;
+		} else if (shift && (sym == hk_sym_BackSpace || sym == hk_sym_Delete)) {
 			// shift + backspace -> erase line
 			unicode = DKBD_U_ERASE_LINE;
 		} else if (shift && hkbd.code_to_dkey[code] == DSCAN_ENTER) {
@@ -1404,6 +1408,7 @@ void hk_scan_press(uint8_t code) {
 		case hk_sym_Clear: unicode = 12; break;
 		case hk_sym_Return: unicode = 13; break;
 		case hk_sym_Escape: unicode = 3; break;
+		case hk_sym_Caps_Lock: unicode = DKBD_U_CAPS_LOCK; break;
 		default: unicode = sym; break;
 		}
 		// Record computed Unicode value for this this scancode
@@ -1741,10 +1746,6 @@ static void emulator_command(uint16_t sym, bool shift) {
 		}
 		return;
 
-	case hk_sym_z:
-		ui_update_state(-1, ui_tag_kbd_translate, UI_NEXT, NULL);
-		return;
-
 #ifndef HAVE_WASM
 	case hk_sym_0:
 		ui_update_state(-1, ui_tag_zoom, 0, NULL);
@@ -1818,6 +1819,6 @@ static void hk_ui_set_kbd_translate(void *sptr, int tag, void *smsg) {
 	(void)sptr;
 	struct ui_state_message *uimsg = smsg;
 	assert(tag == ui_tag_kbd_translate);
-	hkbd.translate = ui_msg_adjust_value_range(uimsg, hkbd.translate, 0, 0, 1,
-						   UI_ADJUST_FLAG_CYCLE);
+	hkbd.translate = 1;
+	uimsg->value = 1;
 }

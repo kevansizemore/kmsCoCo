@@ -286,32 +286,13 @@ struct cart_config *cart_config_by_name(const char *name) {
 }
 
 struct cart_config *cart_find_working_dos(struct machine_config *mc) {
-	sds tmp = NULL;
+	(void)mc;
+	sds tmp = romlist_find("@rsdos");
 	struct cart_config *cc = NULL;
-	if (mc && strcmp(mc->architecture, "dragonpro") == 0) {
-		return NULL;
-	}
-	if (!mc || (strcmp(mc->architecture, "coco") != 0
-		    && strcmp(mc->architecture, "deluxecoco") != 0
-		    && strcmp(mc->architecture, "coco3") != 0)) {
-		if ((tmp = romlist_find("@dragondos_compat"))) {
-			cc = cart_config_by_name("dragondos");
-		} else if ((tmp = romlist_find("@delta"))) {
-			cc = cart_config_by_name("delta");
-		}
-	} else {
-		if (xroar.cfg.becker.prefer && (tmp = romlist_find("@rsdos_becker"))) {
-			cc = cart_config_by_name("becker");
-		} else if (strcmp(mc->name, "cp400") == 0 && (tmp = romlist_find("@cp450"))) {
-			cc = cart_config_by_name("cp450");
-		} else if ((tmp = romlist_find("@rsdos"))) {
-			cc = cart_config_by_name("rsdos");
-		} else if (!xroar.cfg.becker.prefer && (tmp = romlist_find("@rsdos_becker"))) {
-			cc = cart_config_by_name("becker");
-		}
-	}
-	if (tmp)
+	if (tmp) {
+		cc = cart_config_by_name("rsdos");
 		sdsfree(tmp);
+	}
 	return cc;
 }
 
@@ -429,7 +410,9 @@ struct slist *cart_config_list_is_a(const char *is_a) {
 	for (struct slist *iter = config_list; iter; iter = iter->next) {
 		struct cart_config *cc = iter->data;
 		if (partdb_is_a(cc->type, is_a)) {
-			l = slist_append(l, cc);
+			if (strcmp(cc->name, "rsdos") == 0 || strcmp(cc->name, "romcart") == 0) {
+				l = slist_append(l, cc);
+			}
 		}
 	}
 	return l;

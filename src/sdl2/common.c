@@ -161,6 +161,15 @@ void run_sdl_event_loop(struct ui_sdl2_interface *uisdl2) {
 			}
 			break;
 
+		case SDL_DROPFILE: {
+			char *dropped_file = event.drop.file;
+			if (dropped_file) {
+				xroar_load_file_by_type(dropped_file, 1);
+				SDL_free(dropped_file);
+			}
+			break;
+		}
+
 		case SDL_SYSWMEVENT:
 			sdl_os_handle_syswmevent(uisdl2, event.syswm.msg);
 			break;

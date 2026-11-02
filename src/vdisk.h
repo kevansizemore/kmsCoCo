@@ -154,6 +154,7 @@ bool vdisk_format_track(struct vdisk_ctx *ctx, bool dden,
 bool vdisk_format_disk(struct vdisk_ctx *ctx, bool dden,
 			unsigned ncyls, unsigned nheads,
 			unsigned nsectors, unsigned first_sector, unsigned ssize_code);
+bool vdisk_format_rsdos(struct vdisk *disk);
 
 bool vdisk_set_track(struct vdisk_ctx *ctx, bool extend, unsigned cyl, unsigned head);
 

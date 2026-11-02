@@ -51,6 +51,10 @@ struct printer_interface_private {
 
 	int chars_printed;
 	struct event update_chars_printed_event;
+
+	sds buffer;
+	int autoflush_ms;
+	struct event autoflush_event;
 };
 
 static void printer_ui_set_print_destination(void *, int tag, void *smsg);
@@ -61,6 +65,7 @@ static void open_stream(struct printer_interface_private *pip);
 static void close_stream(struct printer_interface_private *pip);
 static void do_ack_clear(void *);
 static void do_update_chars_printed(void *);
+static void do_autoflush(void *);
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -79,6 +84,9 @@ struct printer_interface *printer_interface_new(void) {
 	pip->stream = NULL;
 	event_init(&pip->ack_clear_event, MACHINE_EVENT_LIST, DELEGATE_AS0(void, do_ack_clear, pip));
 	event_init(&pip->update_chars_printed_event, UI_EVENT_LIST, DELEGATE_AS0(void, do_update_chars_printed, pip));
+	pip->buffer = sdsempty();
+	pip->autoflush_ms = 2000;
+	event_init(&pip->autoflush_event, UI_EVENT_LIST, DELEGATE_AS0(void, do_autoflush, pip));
 	pip->strobe_state = 1;
 	pip->busy = 0;
 	return &pip->public;
@@ -94,7 +102,15 @@ void printer_interface_free(struct printer_interface *pi) {
 		sdsfree(pip->pipe);
 	event_dequeue(&pip->ack_clear_event);
 	event_dequeue(&pip->update_chars_printed_event);
+	event_dequeue(&pip->autoflush_event);
+	if (pip->buffer)
+		sdsfree(pip->buffer);
 	free(pip);
+}
+
+void printer_set_autoflush_ms(struct printer_interface *pi, int ms) {
+	struct printer_interface_private *pip = (struct printer_interface_private *)pi;
+	pip->autoflush_ms = ms;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -110,13 +126,19 @@ static void printer_ui_set_print_destination(void *sptr, int tag, void *smsg) {
 	assert(tag == ui_tag_print_destination);
 
 	int dest = uimsg->value;
-	if (dest != PRINTER_DESTINATION_FILE && dest != PRINTER_DESTINATION_PIPE) {
+	if (dest < PRINTER_DESTINATION_NONE || dest > PRINTER_DESTINATION_PIPE) {
 		dest = PRINTER_DESTINATION_NONE;
 	}
 	if (dest != pip->destination) {
 		printer_flush(&pip->public);
 		pip->destination = dest;
-		pip->busy = 0;
+		if (dest == PRINTER_DESTINATION_FILE && !pip->filename) {
+			pip->busy = 1;
+		} else if (dest == PRINTER_DESTINATION_PIPE && !pip->pipe) {
+			pip->busy = 1;
+		} else {
+			pip->busy = 0;
+		}
 	}
 	uimsg->value = dest;
 }
@@ -166,17 +188,51 @@ static void printer_ui_set_print_pipe(void *sptr, int tag, void *smsg) {
 /* close stream but leave stream_dest intact so it will be reopened */
 void printer_flush(struct printer_interface *pi) {
 	struct printer_interface_private *pip = (struct printer_interface_private *)pi;
-	if (!pip->stream)
-		return;
-	if (pip->destination == PRINTER_DESTINATION_PIPE) {
+	event_dequeue(&pip->autoflush_event);
+
+	if (pip->stream) {
+		if (pip->destination == PRINTER_DESTINATION_PIPE) {
 #ifdef HAVE_POPEN
-		pclose(pip->stream);
+			pclose(pip->stream);
 #endif
+		}
+		if (pip->destination == PRINTER_DESTINATION_FILE) {
+			fclose(pip->stream);
+		}
+		pip->stream = NULL;
 	}
-	if (pip->destination == PRINTER_DESTINATION_FILE) {
-		fclose(pip->stream);
+
+	if (pip->buffer && sdslen(pip->buffer) > 0) {
+		sds clean = sdsempty();
+		size_t blen = sdslen(pip->buffer);
+		for (size_t i = 0; i < blen; i++) {
+			unsigned char c = (unsigned char)pip->buffer[i];
+			if (c == '\r') {
+				clean = sdscatlen(clean, "\n", 1);
+				if (i + 1 < blen && pip->buffer[i + 1] == '\n') {
+					i++;
+				}
+			} else if (c == '\n' || c == '\t' || c == '\f') {
+				clean = sdscatlen(clean, (char *)&c, 1);
+			} else if (c >= 0x20 && c <= 0x7E) {
+				clean = sdscatlen(clean, (char *)&c, 1);
+			} else if (c >= 0x80) {
+				unsigned char ascii_c = c & 0x7F;
+				if (ascii_c >= 0x20 && ascii_c <= 0x7E) {
+					clean = sdscatlen(clean, (char *)&ascii_c, 1);
+				} else {
+					clean = sdscatlen(clean, " ", 1);
+				}
+			}
+		}
+
+		if (sdslen(clean) > 0) {
+			DELEGATE_SAFE_CALL(pi->print_job_completed, clean, sdslen(clean));
+		}
+		sdsfree(clean);
+		sdssetlen(pip->buffer, 0);
 	}
-	pip->stream = NULL;
+
 	pip->chars_printed = 0;
 	if (!event_queued(&pip->update_chars_printed_event)) {
 		event_queue_dt(&pip->update_chars_printed_event, EVENT_MS(500));
@@ -191,21 +247,48 @@ void printer_strobe(struct printer_interface *pi, bool strobe, int data) {
 	if (strobe == pip->strobe_state) return;
 	pip->strobe_state = strobe;
 	if (!pip->strobe_state) return;
-	// Open stream for output if it's not already
-	if (!pip->stream)
+
+	if (pip->destination == PRINTER_DESTINATION_NONE) {
+		// ACK and return
+		DELEGATE_SAFE_CALL(pi->signal_ack, 1);
+		event_queue_dt(&pip->ack_clear_event, EVENT_US(7));
+		return;
+	}
+
+	if (!pip->buffer) {
+		pip->buffer = sdsempty();
+	}
+	char ch = (char)data;
+	pip->buffer = sdscatlen(pip->buffer, &ch, 1);
+
+	// Open stream for output if it's not already (for legacy file/pipe)
+	if (!pip->stream && (pip->destination == PRINTER_DESTINATION_FILE || pip->destination == PRINTER_DESTINATION_PIPE))
 		open_stream(pip);
 	// Print byte
 	if (pip->stream) {
 		fputc(data, pip->stream);
-		// Schedule UI notify
-		pip->chars_printed++;
-		if (!event_queued(&pip->update_chars_printed_event)) {
-			event_queue_dt(&pip->update_chars_printed_event, EVENT_MS(500));
-		}
 	}
+
+	// Schedule UI notify
+	pip->chars_printed++;
+	if (!event_queued(&pip->update_chars_printed_event)) {
+		event_queue_dt(&pip->update_chars_printed_event, EVENT_MS(500));
+	}
+
+	// Reset autoflush timer
+	if (pip->autoflush_ms > 0) {
+		event_dequeue(&pip->autoflush_event);
+		event_queue_dt(&pip->autoflush_event, EVENT_MS(pip->autoflush_ms));
+	}
+
 	// ACK, and schedule !ACK
 	DELEGATE_SAFE_CALL(pi->signal_ack, 1);
 	event_queue_dt(&pip->ack_clear_event, EVENT_US(7));
+}
+
+static void do_autoflush(void *sptr) {
+	struct printer_interface_private *pip = sptr;
+	printer_flush(&pip->public);
 }
 
 bool printer_busy(struct printer_interface *pi) {

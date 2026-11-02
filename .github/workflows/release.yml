@@ -1,0 +1,189 @@
+name: Build & Release kmsCoCo
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================
+  # macOS (Apple Silicon ARM64)
+  # ==========================================
+  build-macos-arm64:
+    name: macOS (Apple Silicon ARM64)
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install autoconf automake pkg-config sdl2 libpng
+
+      - name: Bootstrap & Configure
+        run: |
+          ./autogen.sh
+          ./configure --enable-ui-sdl \
+                      --with-cocoa \
+                      --with-coreaudio \
+                      --with-sdl2 \
+                      --without-sdl3 \
+                      --without-x \
+                      --without-gtk3 \
+                      --without-gtk2 \
+                      CFLAGS="-O3 -arch arm64" \
+                      OBJCFLAGS="-O3 -arch arm64" \
+                      LDFLAGS="-arch arm64"
+
+      - name: Compile
+        run: make -j$(sysctl -n hw.ncpu)
+
+      - name: Package App Bundle
+        run: |
+          ./tools/package-macos-app.sh
+          zip -r kmsCoCo-macos-arm64.zip kmsCoCo.app README.md LICENSE
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmsCoCo-macos-arm64
+          path: kmsCoCo-macos-arm64.zip
+
+  # ==========================================
+  # Linux (x86_64)
+  # ==========================================
+  build-linux-x86_64:
+    name: Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake pkg-config \
+                                  libsdl2-dev libpng-dev libasound2-dev libpulse-dev
+
+      - name: Bootstrap & Configure
+        run: |
+          ./autogen.sh
+          ./configure --enable-ui-sdl \
+                      --with-sdl2 \
+                      --with-alsa \
+                      --with-pulseaudio \
+                      --without-x \
+                      --without-gtk3 \
+                      --without-gtk2 \
+                      CFLAGS="-O3"
+
+      - name: Compile
+        run: make -j$(nproc)
+
+      - name: Package Linux Tarball
+        run: |
+          mkdir -p dist-linux
+          cp src/kmscoco dist-linux/
+          cp README.md LICENSE dist-linux/
+          tar -czvf kmsCoCo-linux-x86_64.tar.gz -C dist-linux .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmsCoCo-linux-x86_64
+          path: kmsCoCo-linux-x86_64.tar.gz
+
+  # ==========================================
+  # Windows (x86_64 MinGW)
+  # ==========================================
+  build-windows-x64:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-autotools
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-libpng
+            zip
+
+      - name: Bootstrap & Configure
+        shell: msys2 {0}
+        run: |
+          ./autogen.sh
+          ./configure --enable-ui-sdl \
+                      --with-windows32 \
+                      --with-sdl2 \
+                      --without-sdl3 \
+                      --without-x \
+                      --without-gtk3 \
+                      --without-gtk2 \
+                      CFLAGS="-O3"
+
+      - name: Compile
+        shell: msys2 {0}
+        run: make -j$NUMBER_OF_PROCESSORS
+
+      - name: Package Windows Zip
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist-win
+          cp src/kmscoco.exe dist-win/
+          cp /mingw64/bin/SDL2.dll dist-win/
+          cp /mingw64/bin/libpng16-16.dll dist-win/
+          cp /mingw64/bin/zlib1.dll dist-win/
+          cp README.md dist-win/
+          cp LICENSE dist-win/
+          cd dist-win && zip -r ../kmsCoCo-windows-x64.zip *
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmsCoCo-windows-x64
+          path: kmsCoCo-windows-x64.zip
+
+  # ==========================================
+  # Automated GitHub Release (on tag v*)
+  # ==========================================
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-macos-arm64, build-linux-x86_64, build-windows-x64]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: List Artifacts
+        run: ls -la kmsCoCo-*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kmsCoCo-macos-arm64/kmsCoCo-macos-arm64.zip
+            kmsCoCo-linux-x86_64/kmsCoCo-linux-x86_64.tar.gz
+            kmsCoCo-windows-x64/kmsCoCo-windows-x64.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true

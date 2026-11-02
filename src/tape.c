@@ -38,6 +38,7 @@
 #include "snapshot.h"
 #include "sound.h"
 #include "tape.h"
+#include "tape_deck.h"
 #include "ui.h"
 #include "xroar.h"
 
@@ -800,6 +801,7 @@ void tape_set_motor(struct tape_interface *ti, bool motor) {
 	if (motor != prev_state) {
 		LOG_MOD_DEBUG(2, "tape", "MOTOR %s\n", motor ? "ON" : "OFF");
 	}
+	tape_deck_notify_motor(tip->motor);
 	ui_update_state(tip->msgr_client_id, ui_tag_tape_motor, tip->motor, NULL);
 }
 
@@ -1356,7 +1358,10 @@ static void fast_motor_on(void *sptr, bool RnW, uint32_t A) {
 	(void)A;
 
 	update_read_time(tip);
-	if (!tip->short_leader) {
+	if (tip->public.tape_input && tip->public.tape_input->type == FILETYPE_CAS) {
+		debug_set_register(tip->machine->debug.target, tip->regno_x, 0);
+		DELEGATE_CALL(tip->machine->debug.cpu.set_flag, debug_cpu_flag_zero, 1);
+	} else if (!tip->short_leader) {
 		motor_on_delay(tip);
 	} else {
 		debug_set_register(tip->machine->debug.target, tip->regno_x, 0);
@@ -1375,9 +1380,7 @@ static void fast_sync_leader(void *sptr, bool RnW, uint32_t A) {
 	(void)A;
 
 	update_read_time(tip);
-	if (!tip->short_leader) {
-		sync_leader(tip);
-	}
+	sync_leader(tip);
 	tip->machine->op_rts(tip->machine);
 	do_skip_read_time(tip);
 }
@@ -1598,7 +1601,7 @@ static void set_breakpoints(struct tape_interface_private *tip) {
 		return;
 	}
 	// Add required breakpoints
-	if ((tip->short_leader && tip->tape_pad_auto) || tip->tape_fast) {
+	if (tip->public.tape_input->type == FILETYPE_CAS || (tip->short_leader && tip->tape_pad_auto) || tip->tape_fast) {
 		machine_add_breakpoint_list(tip->machine, bp_list_pad, tip);
 		if (tip->tape_fast) {
 			machine_add_breakpoint_list(tip->machine, bp_list_fast, tip);

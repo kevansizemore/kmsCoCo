@@ -39,6 +39,7 @@ struct auto_kbd *auto_kbd_new(struct machine *m);
 // Free auto_kbd.
 
 void auto_kbd_free(struct auto_kbd *ak);
+void auto_kbd_cancel(struct auto_kbd *ak);
 
 // Queue pre-parsed string to be typed.
 

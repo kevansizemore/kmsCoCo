@@ -992,6 +992,8 @@ static void *dragon_get_interface(struct machine *m, const char *ifname) {
 		return md->keyboard.interface;
 	} else if (0 == strcmp(ifname, "printer")) {
 		return md->printer_interface;
+	} else if (0 == strcmp(ifname, "sound")) {
+		return md->snd;
 	} else if (0 == strcmp(ifname, "tape-update-audio")) {
 		return &md->tape_update_audio;
 	}

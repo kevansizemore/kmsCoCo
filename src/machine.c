@@ -100,12 +100,7 @@ static const char *int_arch_to_string[5] = {
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 struct xconfig_enum machine_keyboard_list[] = {
-	{ XC_ENUM_INT("dragon", dkbd_layout_dragon, "Dragon") },
-	{ XC_ENUM_INT("dragon200e", dkbd_layout_dragon200e, "Dragon 200-E") },
-	{ XC_ENUM_INT("coco", dkbd_layout_coco, "Tandy CoCo 1/2") },
-	{ XC_ENUM_INT("coco3", dkbd_layout_coco3, "Tandy CoCo 3") },
-	{ XC_ENUM_INT("mc10", dkbd_layout_mc10, "Tandy MC-10") },
-	{ XC_ENUM_INT("alice", dkbd_layout_alice, "Matra & Hachette Alice") },
+	{ XC_ENUM_INT("coco", dkbd_layout_coco, "Tandy CoCo") },
 	{ XC_ENUM_END() }
 };
 
@@ -303,7 +298,7 @@ void machine_config_complete(struct machine_config *mc) {
 		mc->description = xstrdup(mc->name);
 	}
 	if (!mc->architecture) {
-		mc->architecture = xstrdup("dragon64");
+		mc->architecture = xstrdup("coco");
 	}
 	const struct partdb_entry *pe = partdb_find_entry(mc->architecture);
 	if (!partdb_ent_is_a(pe, "machine"))

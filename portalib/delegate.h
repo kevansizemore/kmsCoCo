@@ -89,6 +89,7 @@ typedef DELEGATE_S0(bool) DELEGATE_T0(bool);
 typedef DELEGATE_S1(bool, int) DELEGATE_T1(bool, int);
 typedef DELEGATE_S1(const char *, int) DELEGATE_T1(charcp, int);
 typedef DELEGATE_S1(const char *, unsigned) DELEGATE_T1(charcp, unsigned);
+typedef DELEGATE_S2(void, const char *, size_t) DELEGATE_T2(void, charcp, size_t);
 typedef DELEGATE_S0(unsigned) DELEGATE_T0(unsigned);
 typedef DELEGATE_S1(unsigned, int) DELEGATE_T1(unsigned, int);
 typedef DELEGATE_S1(unsigned, unsigned) DELEGATE_T1(unsigned, unsigned);

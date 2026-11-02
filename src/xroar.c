@@ -272,6 +272,16 @@ struct private_cfg {
 		int destination;
 		char *file;
 		char *pipe;
+		char *path;
+		int font_family;
+		double font_size;
+		double margin;
+		int autoflush_ms;
+		char *header_title;
+		bool header_show_title;
+		bool header_show_date;
+		int page_num_loc;
+		int page_num_fmt;
 	} printer;
 
 	// Debugging
@@ -305,6 +315,7 @@ static struct private_cfg private_cfg = {
 	.cart.becker = ANY_AUTO,
 	.cart.autorun = ANY_AUTO,
 	.cart.mpi.initial_slot = ANY_AUTO,
+	.kbd.translate = 1,
 	.tape.fast = 1,
 	.tape.pad_auto = 1,
 	.vo.picture = UI_AUTO,
@@ -316,6 +327,16 @@ static struct private_cfg private_cfg = {
 	// if volume set >=0, use that, else use gain value in dB
 	.ao.gain = -3.0,
 	.ao.volume = -1,
+	.printer.destination = PRINTER_DEST_PROMPT,
+	.printer.font_family = PRINTER_FONT_MONO,
+	.printer.font_size = 10.0,
+	.printer.margin = 0.5,
+	.printer.autoflush_ms = 2000,
+	.printer.header_title = NULL,
+	.printer.header_show_title = 1,
+	.printer.header_show_date = 1,
+	.printer.page_num_loc = PRINTER_PAGE_NUM_BOTTOM_CENTER,
+	.printer.page_num_fmt = PRINTER_PAGE_NUM_FMT_PAGE_N_OF_TOTAL,
 #ifdef WANT_TRAPS
 	.debug.trap_def.trace = -1,
 	.debug.trap_def.no_trace = -1,
@@ -404,331 +425,30 @@ static struct cart_config *selected_cart_config;
 /* Default configuration */
 
 static char const * const default_config[] = {
-#ifdef WANT_MACHINE_ARCH_DRAGON
-	// Dragon 32
-	"machine dragon32",
-	"machine-desc 'Dragon 32'",
-	"machine-arch dragon32",
-	"tv-type pal",
-	"ram 32",
-	// Dragon 64
-	"machine dragon64",
-	"machine-desc 'Dragon 64'",
-	"machine-arch dragon64",
-	"tv-type pal",
-	"ram 64",
-	// Tano Dragon
-	"machine tano",
-	"machine-desc 'Tano Dragon (NTSC)'",
-	"machine-arch dragon64",
-	"tv-type ntsc",
-	"ram 64",
-	// Dragon Professional (Alpha)
-	"machine dragonpro",
-	"machine-desc 'Dragon Professional (Alpha)'",
-	"machine-arch dragonpro",
-	"tv-type pal",
-	"ram 64",
-	// Dragon 200-E
-	"machine dragon200e",
-	"machine-desc 'Dragon 200-E'",
-	"machine-arch dragon64",
-	"machine-keyboard dragon200e",
-	"extbas @dragon200e",
-	"altbas @dragon200e_alt",
-	"ext-charset @dragon200e_charset",
-	"tv-type pal",
-	"ram 64",
-	// Dragon 64 with SAMx8
-	"machine dragonx8",
-	"machine-desc 'Dragon 64 + SAMx8 (512K)'",
-	"machine-arch dragon64",
-	"tv-type pal",
-	"ram 0",
-	"machine-opt sam=samx8",
-	// CoCo
+	"default-machine coco",
+	"kbd-translate",
+	// Tandy CoCo (PAL)
 	"machine coco",
 	"machine-desc 'Tandy CoCo (PAL)'",
 	"machine-arch coco",
 	"tv-type pal",
 	"ram 64",
-	// CoCo (US)
-	"machine cocous",
-	"machine-desc 'Tandy CoCo (NTSC)'",
-	"machine-arch coco",
-	"tv-type ntsc",
-	"ram 64",
-	// CoCo 2B
-	"machine coco2b",
-	"machine-desc 'Tandy CoCo 2B (PAL,T1)'",
-	"machine-arch coco",
-	"tv-type pal",
-	"vdg-type 6847t1",
-	"ram 64",
-	// CoCo 2B (US)
-	"machine coco2bus",
-	"machine-desc 'Tandy CoCo 2B (NTSC,T1)'",
-	"machine-arch coco",
-	"tv-type ntsc",
-	"vdg-type 6847t1",
-	"ram 64",
-	// Deluxe CoCo
-	"machine deluxecoco",
-	"machine-desc 'Tandy Deluxe CoCo'",
-	"machine-arch deluxecoco",
-	"tv-type ntsc",
-	"vdg-type 6847t1",
-	"ram 64",
-#endif
 
-#ifdef WANT_MACHINE_ARCH_COCO3
-	// CoCo 3
-	"machine coco3",
-	"machine-desc 'Tandy CoCo 3'",
-	"machine-arch coco3",
-	"tv-type ntsc",
-	"vdg-type gime1986",
-	"ram 512",
-	// CoCo 3, 6309
-	"machine coco3h",
-	"machine-desc 'Tandy CoCo 3 (6309)'",
-	"machine-arch coco3",
-	"machine-cpu 6309",
-	"tv-type ntsc",
-	"vdg-type gime1986",
-	"ram 512",
-	// CoCo 3 PAL
-	"machine coco3p",
-	"machine-desc 'Tandy CoCo 3 (PAL)'",
-	"machine-arch coco3",
-	"tv-type pal",
-	"vdg-type gime1986",
-	"extbas @coco3p",
-	"ram 512",
-	// CoCo 3 PAL
-	"machine coco3ph",
-	"machine-desc 'Tandy CoCo 3 (PAL, 6309)'",
-	"machine-arch coco3",
-	"machine-cpu 6309",
-	"tv-type pal",
-	"vdg-type gime1986",
-	"extbas @coco3p",
-	"ram 512",
-#endif
-
-#ifdef WANT_MACHINE_ARCH_DRAGON
-	// Dynacom MX-1600
-	"machine mx1600",
-	"machine-desc 'Dynacom MX-1600'",
-	"machine-arch coco",
-	"bas @mx1600",
-	"extbas @mx1600ext",
-	"tv-type pal-m",
-	"ram 64",
-	// Prológica CP-400
-	"machine cp400",
-	"machine-desc 'Prológica CP-400'",
-	"machine-arch coco",
-	"bas @cp400",
-	"extbas @cp400ext",
-	"tv-type pal-m",
-	"ram 64",
-#endif
-
-#ifdef WANT_MACHINE_ARCH_MC10
-	// MC-10
-	"machine mc10",
-	"machine-desc 'Tandy MC-10'",
-	"machine-arch mc10",
-	"tv-type ntsc",
-	"bas @mc10",
-	"ram 20",
-	// Matra & Hachette Alice
-	"machine alice",
-	"machine-desc 'Matra & Hachette Alice'",
-	"machine-arch mc10",
-	"machine-keyboard alice",
-	"tv-type pal",
-	"bas @alice",
-	"ram 20",
-#endif
-
-#ifdef WANT_CART_ARCH_DRAGON
-	// DragonDOS
-	"cart dragondos",
-	"cart-desc DragonDOS",
-	"cart-type dragondos",
+	// Cartridges
 	// RSDOS
 	"cart rsdos",
 	"cart-desc RS-DOS",
 	"cart-type rsdos",
-	// Delta
-	"cart delta",
-	"cart-desc 'Delta System'",
-	"cart-type delta",
-#ifndef HAVE_WASM
-	// RSDOS w/ Becker port
-	"cart becker",
-	"cart-desc 'RS-DOS with becker port'",
-	"cart-type rsdos",
-	"cart-rom @rsdos_becker",
-	"cart-becker",
-#endif
-	// CP450
-	"cart cp450",
-	"cart-desc 'Prológica CP-450'",
-	"cart-type rsdos",
-	"cart-rom @cp450",
-	// Games Master Cartridge
-	"cart gmc",
-	"cart-desc 'Games Master Cartridge'",
-	"cart-type gmc",
-	// Orchestra 90
-	"cart orch90",
-	"cart-desc 'Orchestra-90 CC'",
-	"cart-type orch90",
-	"cart-autorun",
-#ifndef HAVE_WASM
-	// Multi-Pak Interface
-	"cart mpi",
-	"cart-desc 'Multi-Pak Interface'",
-	"cart-type mpi",
-	// Multi-Pak Interface
-	"cart mpi-race",
-	"cart-desc 'RACE Computer Expansion Cage'",
-	"cart-type mpi-race",
-#endif
-	// IDE Cartridge
-	"cart ide",
-	"cart-desc 'IDE Interface'",
-	"cart-type ide",
-	"cart-becker",
-#ifndef HAVE_WASM
-#ifdef WANT_EXPERIMENTAL
-	// CoCoSDC cartridge
-	"cart cocosdc",
-	"cart-desc 'CoCoSDC'",
-	"cart-type cocosdc",
-	// Ikon Ultra Drive cartridge
-	"cart ikon",
-	"cart-desc 'Ikon Ultra Drive cartridge'",
-	"cart-type ikon",
-#endif
-	// NX32 memory cartridge
-	"cart nx32",
-	"cart-desc 'NX32 memory cartridge'",
-	"cart-type nx32",
-#endif
-	// MOOH memory cartridge
-	"cart mooh",
-	"cart-desc 'MOOH memory cartridge'",
-	"cart-type mooh",
-#endif
-
-#ifdef WANT_CART_ARCH_MC10
-	// MCX128 memory expansion
-	"cart mcx128",
-	"cart-desc 'MCX128 memory expansion (MC-10)'",
-	"cart-type mcx128",
-	"cart-rom @mcx128",
-	// MCX128 memory expansion (MCX BASIC AZERTY)
-	"cart mcx128a",
-	"cart-desc 'MCX128 memory expansion (Alice)'",
-	"cart-type mcx128",
-	"cart-rom @mcx128_azerty",
-#endif
 
 	// ROM lists
-
-#ifdef WANT_MACHINE_ARCH_DRAGON
-	// Fallback Dragon BASIC
-	"romlist dragon=dragon",
-	"romlist d64_1=d64_1,d64rom1,'Dragon Data Ltd - Dragon 64 - IC17','Dragon Data Ltd - TANO IC18','Eurohard S.A. - Dragon 200 IC18',dragrom",
-	"romlist d64_2=d64_2,d64rom2,'Dragon Data Ltd - Dragon 64 - IC18','Dragon Data Ltd - TANO IC17','Eurohard S.A. - Dragon 200 IC17'",
-	"romlist d32=d32,dragon32,d32rom,'Dragon Data Ltd - Dragon 32 - IC17'",
-	"romlist d200e_1=d200e_1,d200e_rom1,ic18_v1.4e.ic34",
-	"romlist d200e_2=d200e_2,d200e_rom2,ic17_v1.4e.ic37",
-	// Specific Dragon BASIC
-	"romlist dragon64=@d64_1,@dragon",
-	"romlist dragon64_alt=@d64_2",
-	"romlist dragon32=@d32,@dragon",
-	"romlist dragon200e=@d200e_1,@d64_1,@dragon",
-	"romlist dragon200e_alt=@d200e_2,@d64_2",
-	"romlist dragon200e_charset=d200e_26,rom26.ic1",
-	// Dragon Professional (Alpha)
-	"romlist dragonpro_boot=alpha-boot-v1.0,alpha_bt_10,'Dragon Data Ltd - Dragon Alpha Boot v1.0 150584',alpha-boot-v0.4,alpha_bt_04",
-	"romlist dragonpro_basic=alpha-basic,alpha_ba,'Dragon Data Ltd - Dragon Alpga Basic',@d64_1",
 	// Fallback CoCo BASIC
 	"romlist coco=bas13,bas12,'Color Basic v1.2 (1982)(Tandy)',bas11,bas10",
 	"romlist coco_ext=extbas11,extbas10,coco,COCO",
-	// Specific CoCo BASIC
-	"romlist coco1=bas10,@coco",
-	"romlist coco1e=bas11,@coco",
-	"romlist coco1e_ext=extbas10,@coco_ext",
-	"romlist coco2=bas12,@coco",
-	"romlist coco2_ext=extbas11,@coco_ext",
-	"romlist coco2b=bas13,@coco",
-	// Deluxe CoCo
-#ifdef HAVE_WASM
-	// This is a bodge to make the WebAssembly build look for the combined
-	// image first.  It can be removed once proper named ROM slots
-	// per-machine are implemented.
-	"romlist deluxecoco=deluxe,adv070_u24",
-#else
-	"romlist deluxecoco=adv070_u24,deluxe",
-#endif
-	"romlist deluxecoco1=adv071_u24",
-	"romlist deluxecoco2=adv072_u24",
-	"romlist deluxecoco3=adv073-2_u24,adv073_u24",
-	// MX-1600 and zephyr-patched version
-	"romlist mx1600=mx1600bas,mx1600bas_zephyr",
-	"romlist mx1600ext=mx1600extbas",
-	// CP-400
-	"romlist cp400=cp400bas",
-	"romlist cp400ext=cp400ext",
-#endif
-
-#ifdef WANT_MACHINE_ARCH_COCO3
-	// CoCo 3 Super Extended Colour BASIC
-	"romlist coco3=coco3",
-	"romlist coco3p=coco3p",
-	"romlist glenside_ide=yados,hdblba",
-#endif
-
-#ifdef WANT_MACHINE_ARCH_MC10
-	// MC-10 BASIC
-	"romlist mc10=mc10",
-	// Alice BASIC
-	"romlist alice=alice",
-#endif
-
-#ifdef WANT_CART_ARCH_DRAGON
-	// DragonDOS
-	"romlist dragondos=ddos12a,ddos12,ddos40,ddos15,ddos10,'Dragon Data Ltd - DragonDOS 1.0'",
-	"romlist dosplus=dplus49b,dplus48,dosplus-4.8,DOSPLUS",
-	"romlist superdos=sdose6,'PNP - SuperDOS E6',sdose5,sdose4",
-	"romlist cumana=cdos20,CDOS20,'CumanaDOSv2.0'",
-	"romlist dragondos_compat=@dosplus,@superdos,@dragondos,@cumana",
+	"romlist bas=@coco",
+	"romlist extbas=@coco_ext",
 	// RSDOS
 	"romlist rsdos=disk11,disk10",
-	"romlist cp450=cp450dsk,@rsdos",
-	// Delta
-	"romlist delta=delta2,delta1a,delta19,delta,deltados,'Premier Micros - DeltaDOS'",
-#ifndef HAVE_WASM
-#ifdef WANT_EXPERIMENTAL
-	// Ikon Ultra Drive cartridge
-	"romlist ikon=dragonfly-2.3,dragonfly-1.3",
-#endif
-	// RSDOS with becker port
-	"romlist rsdos_becker=hdbdw3bck",
-#endif
-#endif
-
-#ifdef WANT_CART_ARCH_MC10
-	// MCX128 BASIC
-	"romlist mcx128=mcx128,MCX_Basic_21",
-	"romlist mcx128_azerty=mcx128a,MCX_Basic_21_AZERTY",
-#endif
+	"romlist disk=@rsdos",
 
 	// Joysticks
 	"joy mjoy0",
@@ -804,6 +524,8 @@ static struct {
 	{ "CCC", FILETYPE_ROM },
 	{ "BAS", FILETYPE_ASC },
 	{ "ASC", FILETYPE_ASC },
+	{ "TXT", FILETYPE_ASC },
+	{ "TEXT", FILETYPE_ASC },
 	{ "VHD", FILETYPE_VHD },
 	{ "IDE", FILETYPE_IDE },
 	{ "IMG", FILETYPE_IMG },
@@ -926,13 +648,12 @@ struct ui_interface *xroar_init(int argc, char **argv) {
 	// Parse config file, if found (and not disabled).
 
 	if (!no_conffile) {
-		// Deprecated XROAR_CONF_PATH in 1.6
-		const char *xroar_conf_path = getenv("XROAR_CONF_PATH");
-		if (!xroar_conf_path) {
-			xroar_conf_path = CONFPATH;
+		const char *conf_path = getenv("KMSCOCO_CONF_PATH");
+		if (!conf_path) {
+			conf_path = CONFPATH;
 		}
 		if (!conffile) {
-			conffile = find_in_path(xroar_conf_path, "xroar.conf");
+			conffile = find_in_path(conf_path, "kmscoco.conf");
 		}
 		if (conffile) {
 			(void)xconfig_parse_file(&xroar_option_set, conffile);
@@ -1237,11 +958,9 @@ struct ui_interface *xroar_init(int argc, char **argv) {
 
 	// Default print destination
 	if (private_cfg.printer.file) {
-		private_cfg.printer.destination = PRINTER_DESTINATION_FILE;
+		private_cfg.printer.destination = PRINTER_DEST_FILE;
 	} else if (private_cfg.printer.pipe) {
-		private_cfg.printer.destination = PRINTER_DESTINATION_PIPE;
-	} else {
-		private_cfg.printer.destination = PRINTER_DESTINATION_NONE;
+		private_cfg.printer.destination = PRINTER_DEST_PIPE;
 	}
 
 	// Create tape interface
@@ -1536,7 +1255,18 @@ static void remove_autosave_flag_file(void) {
 }
 
 void xroar_save_config_file(void) {
-	sds filename = path_interp(AUTOSAVE_PREFIX""PSEP"xroar.conf");
+	sds prefix = path_interp(AUTOSAVE_PREFIX);
+	struct stat st;
+	if (stat(prefix, &st) != 0) {
+#ifdef WINDOWS32
+		_mkdir(prefix);
+#else
+		mkdir(prefix, 0755);
+#endif
+	}
+	sdsfree(prefix);
+
+	sds filename = path_interp(AUTOSAVE_PREFIX""PSEP"kmscoco.conf");
 
 	// If config exists and backup doesn't, move config to backup
 	sds backup_filename = sdsdup(filename);
@@ -1633,6 +1363,7 @@ void xroar_load_file_by_type(const char *filename, int autorun) {
 
 	case FILETYPE_ROM:
 		{
+			recent_media_add(RECENT_MEDIA_CART, filename);
 			struct cart_config *cc;
 			xroar.machine->remove_cart(xroar.machine);
 			cc = cart_config_by_name(filename);
@@ -1646,18 +1377,21 @@ void xroar_load_file_by_type(const char *filename, int autorun) {
 		}
 		break;
 
-	case FILETYPE_CAS:
-	case FILETYPE_K7:
 	case FILETYPE_ASC:
-	case FILETYPE_WAV:
-	default:
-		if (filetype == FILETYPE_ASC && part_is_a(&xroar.machine->part, "mc10")) {
+		if (xroar.auto_kbd) {
 			ak_type_file(xroar.auto_kbd, filename);
 			ak_parse_type_string(xroar.auto_kbd, "\\r");
 			if (autorun) {
 				ak_parse_type_string(xroar.auto_kbd, "RUN\\r");
 			}
-		} else {
+		}
+		return;
+
+	case FILETYPE_CAS:
+	case FILETYPE_K7:
+	case FILETYPE_WAV:
+	default:
+		{
 			int r;
 			if (autorun) {
 				r = tape_autorun(xroar.tape_interface, filename);
@@ -1665,6 +1399,7 @@ void xroar_load_file_by_type(const char *filename, int autorun) {
 				r = tape_open_reading(xroar.tape_interface, filename);
 			}
 			if (r != -1) {
+				recent_media_add(RECENT_MEDIA_TAPE, filename);
 				ui_update_state(-1, ui_tag_tape_input_filename, 0, filename);
 			}
 		}
@@ -1796,25 +1531,36 @@ void xroar_new_disk(int drive) {
 		case FILETYPE_DMK:
 			break;
 		default:
-			filetype = FILETYPE_DMK;
+			filetype = FILETYPE_JVC; // Default to standard .dsk (JVC raw sector format)
 			break;
 	}
 	new_disk->filetype = filetype;
 	new_disk->filename = xstrdup(filename);
 	new_disk->write_back = 1;
 	new_disk->new_disk = 1;  // no need to back up disk file
-	new_disk->dirty = 1;  // always write empty disk
+
+	bool auto_format = cocoa_filereq_last_disk_auto_format();
+	if (auto_format) {
+		vdisk_format_rsdos(new_disk);
+		vdisk_save(new_disk); // write to disk file immediately so it's a valid formatted file on host disk
+		LOG_MOD_PRINT("xroar", "new formatted RS-DOS disk in drive %d: %s\n", 1+drive, filename);
+	} else {
+		new_disk->dirty = 1;  // always write empty disk on save
+		LOG_MOD_DEBUG(1, "xroar", "new unformatted disk in drive %d: %s\n", 1+drive, filename);
+	}
+
+	recent_media_add(RECENT_MEDIA_DISK, filename);
 	vdrive_insert_disk(xroar.vdrive_interface, drive, new_disk);
 	vdisk_unref(new_disk);
 	ui_update_state(-1, ui_tag_disk_data, drive, new_disk);
 	ui_update_state(-1, ui_tag_disk_write_enable, 1, (void *)(intptr_t)drive);
 	ui_update_state(-1, ui_tag_disk_write_back, 1, (void *)(intptr_t)drive);
-	LOG_MOD_DEBUG(1, "xroar", "new unformatted disk in drive %d: %s\n", 1+drive, filename);
 	free(filename);
 }
 
 void xroar_insert_disk_file(int drive, const char *filename) {
 	if (!filename) return;
+	recent_media_add(RECENT_MEDIA_DISK, filename);
 	struct vdisk *disk = vdisk_load(filename);
 	vdrive_insert_disk(xroar.vdrive_interface, drive, disk);
 	bool write_enable = 0;
@@ -1988,7 +1734,7 @@ static void xroar_ui_state_notify(void *sptr, int tag, void *smsg) {
 		break;
 
 	case ui_tag_kbd_translate:
-		private_cfg.kbd.translate = value;
+		private_cfg.kbd.translate = 1;
 		break;
 
 	default:
@@ -2139,8 +1885,12 @@ void xroar_connect_machine(void) {
 
 	// Printing
 	xroar.printer_interface = xroar.machine->get_interface(xroar.machine, "printer");
-	// Note: if we migrate to having a persistent printer interface, move
-	// these to the main initialisation section.
+	if (xroar.printer_interface) {
+		printer_set_autoflush_ms(xroar.printer_interface, xroar_get_print_autoflush_ms());
+		if (xroar.ui_interface && xroar.ui_interface->printer_job_completed.func) {
+			xroar.printer_interface->print_job_completed = xroar.ui_interface->printer_job_completed;
+		}
+	}
 	ui_update_state(-1, ui_tag_print_destination, private_cfg.printer.destination, NULL);
 	ui_update_state(-1, ui_tag_print_file, 0, private_cfg.printer.file);
 	ui_update_state(-1, ui_tag_print_pipe, 0, private_cfg.printer.pipe);
@@ -2360,6 +2110,7 @@ void xroar_save_snapshot(void) {
 
 void xroar_insert_input_tape_file(const char *filename) {
 	if (!filename) return;
+	recent_media_add(RECENT_MEDIA_TAPE, filename);
 	tape_open_reading(xroar.tape_interface, filename);
 	ui_update_state(-1, ui_tag_tape_input_filename, 0, filename);
 }
@@ -2393,12 +2144,18 @@ void xroar_eject_output_tape(void) {
 }
 
 void xroar_soft_reset(void) {
+	if (xroar.auto_kbd) {
+		auto_kbd_cancel(xroar.auto_kbd);
+	}
 	if (xroar.machine) {
 		xroar.machine->reset(xroar.machine, RESET_SOFT);
 	}
 }
 
 void xroar_hard_reset(void) {
+	if (xroar.auto_kbd) {
+		auto_kbd_cancel(xroar.auto_kbd);
+	}
 	if (xroar.machine) {
 		xroar.machine->reset(xroar.machine, RESET_HARD);
 	}
@@ -2416,6 +2173,206 @@ void xroar_screenshot(void) {
 #endif
 }
 #endif
+
+struct recent_entry recent_media_list[MAX_RECENT_MEDIA];
+int num_recent_media = 0;
+
+void recent_media_add(enum recent_media_type type, const char *path) {
+	if (!path || !*path) return;
+
+	int existing_idx = -1;
+	for (int i = 0; i < num_recent_media; i++) {
+		if (strcmp(recent_media_list[i].path, path) == 0 && recent_media_list[i].type == type) {
+			existing_idx = i;
+			break;
+		}
+	}
+
+	if (existing_idx >= 0) {
+		char *p = recent_media_list[existing_idx].path;
+		for (int i = existing_idx; i > 0; i--) {
+			recent_media_list[i] = recent_media_list[i - 1];
+		}
+		recent_media_list[0].path = p;
+		recent_media_list[0].type = type;
+	} else {
+		if (num_recent_media >= MAX_RECENT_MEDIA) {
+			free(recent_media_list[MAX_RECENT_MEDIA - 1].path);
+			num_recent_media = MAX_RECENT_MEDIA - 1;
+		}
+		for (int i = num_recent_media; i > 0; i--) {
+			recent_media_list[i] = recent_media_list[i - 1];
+		}
+		recent_media_list[0].path = xstrdup(path);
+		recent_media_list[0].type = type;
+		num_recent_media++;
+	}
+
+#ifdef AUTOSAVE_PREFIX
+	if (xroar.ui_interface) {
+		xroar_save_config_file();
+	}
+#endif
+	if (xroar.ui_interface) {
+		DELEGATE_SAFE_CALL(xroar.ui_interface->update_recent_menu);
+	}
+}
+
+void recent_media_clear(void) {
+	for (int i = 0; i < num_recent_media; i++) {
+		free(recent_media_list[i].path);
+		recent_media_list[i].path = NULL;
+	}
+	num_recent_media = 0;
+#ifdef AUTOSAVE_PREFIX
+	if (xroar.ui_interface) {
+		xroar_save_config_file();
+	}
+#endif
+	if (xroar.ui_interface) {
+		DELEGATE_SAFE_CALL(xroar.ui_interface->update_recent_menu);
+	}
+}
+
+static void xconfig_add_recent_cart(const char *path) {
+	recent_media_add(RECENT_MEDIA_CART, path);
+}
+static void xconfig_add_recent_disk(const char *path) {
+	recent_media_add(RECENT_MEDIA_DISK, path);
+}
+static void xconfig_add_recent_tape(const char *path) {
+	recent_media_add(RECENT_MEDIA_TAPE, path);
+}
+
+void check_coco_roms(struct coco_rom_status *status) {
+	memset(status, 0, sizeof(*status));
+	sds bas = romlist_find("@coco");
+	status->has_bas = (bas != NULL);
+	status->bas_path = bas ? xstrdup(bas) : NULL;
+	sdsfree(bas);
+
+	sds extbas = romlist_find("@coco_ext");
+	status->has_extbas = (extbas != NULL);
+	status->extbas_path = extbas ? xstrdup(extbas) : NULL;
+	sdsfree(extbas);
+
+	sds rsdos = romlist_find("@rsdos");
+	status->has_rsdos = (rsdos != NULL);
+	status->rsdos_path = rsdos ? xstrdup(rsdos) : NULL;
+	sdsfree(rsdos);
+
+	status->all_ok = status->has_bas && status->has_extbas && status->has_rsdos;
+}
+
+void free_coco_rom_status(struct coco_rom_status *status) {
+	if (status->bas_path) free(status->bas_path);
+	if (status->extbas_path) free(status->extbas_path);
+	if (status->rsdos_path) free(status->rsdos_path);
+	memset(status, 0, sizeof(*status));
+}
+
+const char *xroar_get_cart_path(void) {
+	return xroar.cfg.file.cart_path;
+}
+const char *xroar_get_disk_path(void) {
+	return xroar.cfg.file.disk_path;
+}
+const char *xroar_get_tape_path(void) {
+	return xroar.cfg.file.tape_path;
+}
+const char *xroar_get_rom_path(void) {
+	return xroar.cfg.file.rompath;
+}
+
+void xroar_set_cart_path(const char *path) {
+	free(xroar.cfg.file.cart_path);
+	xroar.cfg.file.cart_path = (path && *path) ? xstrdup(path) : NULL;
+}
+void xroar_set_disk_path(const char *path) {
+	free(xroar.cfg.file.disk_path);
+	xroar.cfg.file.disk_path = (path && *path) ? xstrdup(path) : NULL;
+}
+void xroar_set_tape_path(const char *path) {
+	free(xroar.cfg.file.tape_path);
+	xroar.cfg.file.tape_path = (path && *path) ? xstrdup(path) : NULL;
+}
+void xroar_set_rom_path(const char *path) {
+	free(xroar.cfg.file.rompath);
+	xroar.cfg.file.rompath = (path && *path) ? xstrdup(path) : NULL;
+}
+
+const char *xroar_get_print_path(void) {
+	return private_cfg.printer.path;
+}
+void xroar_set_print_path(const char *path) {
+	free(private_cfg.printer.path);
+	private_cfg.printer.path = (path && *path) ? xstrdup(path) : NULL;
+}
+int xroar_get_print_dest(void) {
+	return private_cfg.printer.destination;
+}
+void xroar_set_print_dest(int dest) {
+	private_cfg.printer.destination = dest;
+	ui_update_state(-1, ui_tag_print_destination, dest, NULL);
+}
+int xroar_get_print_font_family(void) {
+	return private_cfg.printer.font_family;
+}
+void xroar_set_print_font_family(int family) {
+	private_cfg.printer.font_family = family;
+}
+float xroar_get_print_font_size(void) {
+	return (float)(private_cfg.printer.font_size > 0.0 ? private_cfg.printer.font_size : 10.0);
+}
+void xroar_set_print_font_size(float size) {
+	if (size > 0.0f) private_cfg.printer.font_size = (double)size;
+}
+float xroar_get_print_margin(void) {
+	return (float)(private_cfg.printer.margin > 0.0 ? private_cfg.printer.margin : 0.5);
+}
+void xroar_set_print_margin(float margin) {
+	if (margin > 0.0f) private_cfg.printer.margin = (double)margin;
+}
+int xroar_get_print_autoflush_ms(void) {
+	return private_cfg.printer.autoflush_ms;
+}
+void xroar_set_print_autoflush_ms(int ms) {
+	private_cfg.printer.autoflush_ms = ms;
+	if (xroar.printer_interface) {
+		printer_set_autoflush_ms(xroar.printer_interface, ms);
+	}
+}
+const char *xroar_get_print_header_title(void) {
+	return private_cfg.printer.header_title ? private_cfg.printer.header_title : "kmsCoCo Listing";
+}
+void xroar_set_print_header_title(const char *title) {
+	free(private_cfg.printer.header_title);
+	private_cfg.printer.header_title = (title && *title) ? xstrdup(title) : NULL;
+}
+bool xroar_get_print_header_show_title(void) {
+	return private_cfg.printer.header_show_title;
+}
+void xroar_set_print_header_show_title(bool show) {
+	private_cfg.printer.header_show_title = show;
+}
+bool xroar_get_print_header_show_date(void) {
+	return private_cfg.printer.header_show_date;
+}
+void xroar_set_print_header_show_date(bool show) {
+	private_cfg.printer.header_show_date = show;
+}
+int xroar_get_print_page_num_loc(void) {
+	return private_cfg.printer.page_num_loc;
+}
+void xroar_set_print_page_num_loc(int loc) {
+	private_cfg.printer.page_num_loc = loc;
+}
+int xroar_get_print_page_num_fmt(void) {
+	return private_cfg.printer.page_num_fmt;
+}
+void xroar_set_print_page_num_fmt(int fmt) {
+	private_cfg.printer.page_num_fmt = fmt;
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -3215,6 +3172,12 @@ static struct xconfig_option const xroar_options[] = {
 
 	/* Firmware ROM images: */
 	{ XC_SET_STRING_NE("rompath", &xroar.cfg.file.rompath) },
+	{ XC_SET_STRING_NE("cart-path", &xroar.cfg.file.cart_path) },
+	{ XC_SET_STRING_NE("disk-path", &xroar.cfg.file.disk_path) },
+	{ XC_SET_STRING_NE("tape-path", &xroar.cfg.file.tape_path) },
+	{ XC_CALL_STRING_NE("recent-cart", &xconfig_add_recent_cart) },
+	{ XC_CALL_STRING_NE("recent-disk", &xconfig_add_recent_disk) },
+	{ XC_CALL_STRING_NE("recent-tape", &xconfig_add_recent_tape) },
 	{ XC_CALL_ASSIGN_NE("romlist", &romlist_assign) },
 	{ XC_CALL_NONE("romlist-print", &romlist_print) },
 	{ XC_CALL_ASSIGN("crclist", NULL), .deprecated = 1 },
@@ -3287,6 +3250,17 @@ static struct xconfig_option const xroar_options[] = {
 	{ XC_SET_STRING("joy-virtual", &private_cfg.joy.virtual) },
 
 	/* Printing: */
+	{ XC_SET_INT("print-dest", &private_cfg.printer.destination) },
+	{ XC_SET_STRING_NE("print-path", &private_cfg.printer.path) },
+	{ XC_SET_INT("print-font-family", &private_cfg.printer.font_family) },
+	{ XC_SET_DOUBLE("print-font-size", &private_cfg.printer.font_size) },
+	{ XC_SET_DOUBLE("print-margin", &private_cfg.printer.margin) },
+	{ XC_SET_INT("print-autoflush-ms", &private_cfg.printer.autoflush_ms) },
+	{ XC_SET_STRING_NE("print-header-title", &private_cfg.printer.header_title) },
+	{ XC_SET_BOOL("print-header-show-title", &private_cfg.printer.header_show_title) },
+	{ XC_SET_BOOL("print-header-show-date", &private_cfg.printer.header_show_date) },
+	{ XC_SET_INT("print-page-num-loc", &private_cfg.printer.page_num_loc) },
+	{ XC_SET_INT("print-page-num-fmt", &private_cfg.printer.page_num_fmt) },
 	{ XC_SET_STRING_NE("lp-file", &private_cfg.printer.file) },
 	{ XC_SET_STRING("lp-pipe", &private_cfg.printer.pipe) },
 
@@ -3352,8 +3326,8 @@ static const struct xconfig_set xroar_option_set = {
 static void helptext(void) {
 #ifdef LOGGING
 	puts(
-"Usage: xroar [STARTUP-OPTION]... [OPTION]...\n"
-"XRoar emulates the Dragon 32/64; Tandy Colour Computers 1, 2 and 3;\n"
+"Usage: kmscoco [STARTUP-OPTION]... [OPTION]...\n"
+"kmsCoCo emulates the Dragon 32/64; Tandy Colour Computers 1, 2 and 3;\n"
 "the Tandy MC-10; and some other similar machines or clones.\n"
 "\n"
 
@@ -3556,7 +3530,7 @@ static void helptext(void) {
 "  -config-print       print configuration to standard out\n"
 "  -config-print-all   print configuration to standard out, including defaults\n"
 #ifdef AUTOSAVE_PREFIX
-"  -config-auto-save   write configuration to "AUTOSAVE_PREFIX""PSEP"xroar.conf on exit\n"
+"  -config-auto-save   write configuration to "AUTOSAVE_PREFIX""PSEP"kmscoco.conf on exit\n"
 #endif
 "  -h, --help          display this help and exit\n"
 "  -V, --version       output version information and exit\n"
@@ -3604,7 +3578,9 @@ static void versiontext(void) {
 #ifdef LOGGING
 	printf("%s\n", PACKAGE_TEXT);
 	puts(
-"Copyright (C) " PACKAGE_YEAR " Ciaran Anscomb\n"
+"Based on XRoar by Ciaran Anscomb <https://www.6809.org.uk/xroar/>\n"
+"Copyright (C) " PACKAGE_YEAR " Ciaran Anscomb and kmsCoCo contributors\n"
+"Developed with assistance from Google Gemini & Antigravity\n"
 "License: GNU GPL version 3 or later <https://www.gnu.org/licenses/gpl-3.0.html>.\n"
 "This is free software: you are free to change and redistribute it.\n"
 "There is NO WARRANTY, to the extent permitted by law."
@@ -3677,6 +3653,30 @@ static void config_print_all(FILE *f, bool all) {
 	xroar_cfg_print_bool(f, all, "force-crc-match", xroar.cfg.force_crc_match, 0);
 	fputs("\n", f);
 
+	fputs("# Preferred media paths\n", f);
+	xroar_cfg_print_string(f, all, "cart-path", xroar.cfg.file.cart_path, NULL);
+	xroar_cfg_print_string(f, all, "disk-path", xroar.cfg.file.disk_path, NULL);
+	xroar_cfg_print_string(f, all, "tape-path", xroar.cfg.file.tape_path, NULL);
+	fputs("\n", f);
+
+	if (num_recent_media > 0) {
+		fputs("# Recent media\n", f);
+		for (int i = num_recent_media - 1; i >= 0; i--) {
+			switch (recent_media_list[i].type) {
+			case RECENT_MEDIA_CART:
+				xroar_cfg_print_string(f, all, "recent-cart", recent_media_list[i].path, NULL);
+				break;
+			case RECENT_MEDIA_DISK:
+				xroar_cfg_print_string(f, all, "recent-disk", recent_media_list[i].path, NULL);
+				break;
+			case RECENT_MEDIA_TAPE:
+				xroar_cfg_print_string(f, all, "recent-tape", recent_media_list[i].path, NULL);
+				break;
+			}
+		}
+		fputs("\n", f);
+	}
+
 	fputs("# User interface\n", f);
 	xroar_cfg_print_string(f, all, "ui", private_cfg.ui_module, NULL);
 	xroar_cfg_print_string(f, all, "filereq", xroar_ui_cfg.filereq, NULL);
@@ -3731,6 +3731,17 @@ static void config_print_all(FILE *f, bool all) {
 	fputs("\n", f);
 
 	fputs("# Printing\n", f);
+	xroar_cfg_print_int(f, all, "print-dest", private_cfg.printer.destination, PRINTER_DEST_PROMPT);
+	xroar_cfg_print_string(f, all, "print-path", private_cfg.printer.path, NULL);
+	xroar_cfg_print_int(f, all, "print-font-family", private_cfg.printer.font_family, PRINTER_FONT_MONO);
+	xroar_cfg_print_double(f, all, "print-font-size", private_cfg.printer.font_size, 10.0);
+	xroar_cfg_print_double(f, all, "print-margin", private_cfg.printer.margin, 0.5);
+	xroar_cfg_print_int(f, all, "print-autoflush-ms", private_cfg.printer.autoflush_ms, 2000);
+	xroar_cfg_print_string(f, all, "print-header-title", private_cfg.printer.header_title, NULL);
+	xroar_cfg_print_bool(f, all, "print-header-show-title", private_cfg.printer.header_show_title, 1);
+	xroar_cfg_print_bool(f, all, "print-header-show-date", private_cfg.printer.header_show_date, 1);
+	xroar_cfg_print_int(f, all, "print-page-num-loc", private_cfg.printer.page_num_loc, PRINTER_PAGE_NUM_BOTTOM_CENTER);
+	xroar_cfg_print_int(f, all, "print-page-num-fmt", private_cfg.printer.page_num_fmt, PRINTER_PAGE_NUM_FMT_PAGE_N_OF_TOTAL);
 	xroar_cfg_print_string(f, all, "lp-file", private_cfg.printer.file, NULL);
 	xroar_cfg_print_string(f, all, "lp-pipe", private_cfg.printer.pipe, NULL);
 	fputs("\n", f);

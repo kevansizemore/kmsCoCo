@@ -83,7 +83,7 @@ static void *new(void *cfg) {
 
 	const char **ports;
 
-	if ((aojack->client = jack_client_open("XRoar", 0, NULL)) == 0) {
+	if ((aojack->client = jack_client_open(PACKAGE_NAME, 0, NULL)) == 0) {
 		LOG_MOD_ERROR("jack", "initialisation failed: server not running?\n");
 		goto failed;
 	}

@@ -102,7 +102,6 @@ static int parse_char(struct auto_kbd *ak, uint8_t c);
 static struct machine_bp_entry basic_command_breakpoint[] = {
 	{ "kbd.scan_key", do_rts },
 	{ "POLCAT", do_auto_event },
-	{ "delay_1ms", do_rts },
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -122,9 +121,17 @@ struct auto_kbd *auto_kbd_new(struct machine *m) {
 	return ak;
 }
 
-void auto_kbd_free(struct auto_kbd *ak) {
+void auto_kbd_cancel(struct auto_kbd *ak) {
+	if (!ak)
+		return;
 	machine_remove_breakpoint_all(ak->machine, ak);
 	slist_free_full(ak->auto_event_list, (slist_free_func)auto_event_free_void);
+	ak->auto_event_list = NULL;
+	ak->command_index = 0;
+}
+
+void auto_kbd_free(struct auto_kbd *ak) {
+	auto_kbd_cancel(ak);
 	free(ak);
 }
 
@@ -244,6 +251,11 @@ static void do_auto_event(void *sptr, bool RnW, uint32_t A) {
 		for (;;) {
 			int byte = fgetc(ae->data.basic_file.fd);
 			if (byte < 0) {
+				if (ak->command_index != 13) {
+					ak->command_index = 13;
+					debug_set_register(ak->machine->debug.target, ak->regno_a, 13);
+					DELEGATE_CALL(ak->machine->debug.cpu.set_flag, debug_cpu_flag_zero, 0);
+				}
 				next_event = 1;
 				break;
 			}
@@ -254,6 +266,7 @@ static void do_auto_event(void *sptr, bool RnW, uint32_t A) {
 			if (ae->data.basic_file.utf8)
 				byte = parse_char(ak, byte);
 			if (byte >= 0) {
+				ak->command_index = byte;
 				debug_set_register(ak->machine->debug.target, ak->regno_a, byte);
 				DELEGATE_CALL(ak->machine->debug.cpu.set_flag, debug_cpu_flag_zero, 0);
 				break;
@@ -595,9 +608,18 @@ static sds parse_string(struct auto_kbd *ak, sds s) {
 	const uint8_t *p = (const uint8_t *)s;
 	size_t len = sdslen(s);
 	sds new = sdsempty();
+	int last_c = 0;
 	while (len > 0) {
 		len--;
-		int chr = parse_char(ak, *(p++));
+		uint8_t raw = *(p++);
+		if (raw == 10 && last_c == 13) {
+			continue; // skip LF in CRLF
+		}
+		if (raw == 10) {
+			raw = 13; // normalize lone LF to CR
+		}
+		last_c = raw;
+		int chr = parse_char(ak, raw);
 		if (chr < 0)
 			continue;
 		char c = chr;

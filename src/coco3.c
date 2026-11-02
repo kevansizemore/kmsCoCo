@@ -1044,6 +1044,8 @@ static void *coco3_get_interface(struct machine *m, const char *ifname) {
 		return mcc3->keyboard.interface;
 	} else if (0 == strcmp(ifname, "printer")) {
 		return mcc3->printer_interface;
+	} else if (0 == strcmp(ifname, "sound")) {
+		return mcc3->snd;
 	} else if (0 == strcmp(ifname, "tape-update-audio")) {
 		return &mcc3->tape_update_audio;
 	}

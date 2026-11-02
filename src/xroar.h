@@ -107,6 +107,9 @@ struct xroar_cfg {
 	// Files
 	struct {
 		char *rompath;
+		char *cart_path;
+		char *disk_path;
+		char *tape_path;
 	} file;
 
 	// Cassettes
@@ -204,6 +207,7 @@ void xroar_load_disk(const char *filename, int drive, bool autorun);
 // Helper functions
 void xroar_set_trace(int mode, unsigned n);
 void xroar_new_disk(int drive);
+bool cocoa_filereq_last_disk_auto_format(void);
 void xroar_insert_disk_file(int drive, const char *filename);
 void xroar_insert_disk(int drive);
 void xroar_eject_disk(int drive);
@@ -243,5 +247,111 @@ void xroar_cfg_print_string(FILE *f, bool all, char const *opt, char const *valu
 void xroar_cfg_print_enum(FILE *f, bool all, char const *opt, int value, int normal,
 			  struct xconfig_enum const *e);
 void xroar_cfg_print_string_list(FILE *f, bool all, char const *opt, struct slist *l);
+
+enum recent_media_type {
+	RECENT_MEDIA_CART = 0,
+	RECENT_MEDIA_DISK = 1,
+	RECENT_MEDIA_TAPE = 2,
+};
+
+struct recent_entry {
+	char *path;
+	enum recent_media_type type;
+};
+
+#define MAX_RECENT_MEDIA 10
+extern struct recent_entry recent_media_list[MAX_RECENT_MEDIA];
+extern int num_recent_media;
+
+void recent_media_add(enum recent_media_type type, const char *path);
+void recent_media_clear(void);
+
+struct coco_rom_status {
+	bool has_bas;
+	bool has_extbas;
+	bool has_rsdos;
+	bool all_ok;
+	char *bas_path;
+	char *extbas_path;
+	char *rsdos_path;
+};
+
+void check_coco_roms(struct coco_rom_status *status);
+void free_coco_rom_status(struct coco_rom_status *status);
+
+const char *xroar_get_cart_path(void);
+const char *xroar_get_disk_path(void);
+const char *xroar_get_tape_path(void);
+const char *xroar_get_rom_path(void);
+
+void xroar_set_cart_path(const char *path);
+void xroar_set_disk_path(const char *path);
+void xroar_set_tape_path(const char *path);
+void xroar_set_rom_path(const char *path);
+
+enum printer_dest {
+	PRINTER_DEST_NONE = 0,
+	PRINTER_DEST_PROMPT = 1,
+	PRINTER_DEST_PDF = 2,
+	PRINTER_DEST_TEXT = 3,
+	PRINTER_DEST_FILE = 4,
+	PRINTER_DEST_PIPE = 5,
+};
+
+enum printer_font_family {
+	PRINTER_FONT_MONO = 0,
+	PRINTER_FONT_SERIF = 1,
+	PRINTER_FONT_SANS = 2,
+};
+
+const char *xroar_get_print_path(void);
+void xroar_set_print_path(const char *path);
+
+int xroar_get_print_dest(void);
+void xroar_set_print_dest(int dest);
+
+int xroar_get_print_font_family(void);
+void xroar_set_print_font_family(int family);
+
+float xroar_get_print_font_size(void);
+void xroar_set_print_font_size(float size);
+
+float xroar_get_print_margin(void);
+void xroar_set_print_margin(float margin);
+
+int xroar_get_print_autoflush_ms(void);
+void xroar_set_print_autoflush_ms(int ms);
+
+enum printer_page_num_loc {
+	PRINTER_PAGE_NUM_NONE = 0,
+	PRINTER_PAGE_NUM_BOTTOM_CENTER = 1,
+	PRINTER_PAGE_NUM_BOTTOM_RIGHT = 2,
+	PRINTER_PAGE_NUM_BOTTOM_LEFT = 3,
+	PRINTER_PAGE_NUM_TOP_CENTER = 4,
+	PRINTER_PAGE_NUM_TOP_RIGHT = 5,
+	PRINTER_PAGE_NUM_TOP_LEFT = 6,
+};
+
+enum printer_page_num_fmt {
+	PRINTER_PAGE_NUM_FMT_PAGE_N_OF_TOTAL = 0,
+	PRINTER_PAGE_NUM_FMT_PAGE_N = 1,
+	PRINTER_PAGE_NUM_FMT_N_OF_TOTAL = 2,
+	PRINTER_PAGE_NUM_FMT_N = 3,
+};
+
+const char *xroar_get_print_header_title(void);
+void xroar_set_print_header_title(const char *title);
+
+bool xroar_get_print_header_show_title(void);
+void xroar_set_print_header_show_title(bool show);
+
+bool xroar_get_print_header_show_date(void);
+void xroar_set_print_header_show_date(bool show);
+
+int xroar_get_print_page_num_loc(void);
+void xroar_set_print_page_num_loc(int loc);
+
+int xroar_get_print_page_num_fmt(void);
+void xroar_set_print_page_num_fmt(int fmt);
 
 #endif
