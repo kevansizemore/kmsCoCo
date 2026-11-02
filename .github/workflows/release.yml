@@ -151,10 +151,9 @@ jobs:
         run: |
           mkdir -p dist-win
           cp src/kmscoco.exe dist-win/
-          cp /mingw64/bin/SDL3.dll dist-win/
-          cp /mingw64/bin/libpng16-16.dll dist-win/
-          cp /mingw64/bin/zlib1.dll dist-win/
-          test -f /mingw64/bin/libsystre-0.dll && cp /mingw64/bin/libsystre-0.dll dist-win/ || true
+          for dll in SDL3 libpng16-16 zlib1 libsystre-0 libtre-5 libintl-8 libiconv-2; do
+            test -f "/mingw64/bin/${dll}.dll" && cp "/mingw64/bin/${dll}.dll" dist-win/ || true
+          done
           cp README.md dist-win/
           cp LICENSE dist-win/
           cd dist-win && zip -r ../kmsCoCo-windows-x64.zip *
