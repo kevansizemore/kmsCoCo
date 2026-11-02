@@ -34,6 +34,7 @@ AC_CHECK_TOOL(RC, windres, :)
 
 # Checks for header files.
 AC_CHECK_HEADERS([endian.h regex.h signal.h])
+AC_SEARCH_LIBS([regcomp], [regex gnurx systre tre])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_INT16_T
@@ -324,7 +325,7 @@ AM_COND_IF([MINGW], [
 		test "x$enable_ui_sdl" != "xyes" && enable_ui_sdl=no
 		AC_DEFINE([WINDOWS32], 1, [Windows])
 		MINGW_CFLAGS="-D__USE_MINGW_ANSI_STDIO=1"
-		MINGW_LIBS="-lmingw32 -lwinmm -mwindows -lws2_32 -lcomctl32 -lole32 -luuid"
+		MINGW_LIBS="-lmingw32 -lwinmm -mwindows -lws2_32 -lcomctl32 -lole32 -luuid -lregex"
 		test -z "$with_opengl" && with_opengl=no
 		])
 AC_SUBST(MINGW_CFLAGS)

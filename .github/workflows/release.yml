@@ -126,6 +126,7 @@ jobs:
             mingw-w64-x86_64-autotools
             mingw-w64-x86_64-sdl3
             mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libsystre
             zip
 
       - name: Bootstrap & Configure
@@ -153,6 +154,7 @@ jobs:
           cp /mingw64/bin/SDL3.dll dist-win/
           cp /mingw64/bin/libpng16-16.dll dist-win/
           cp /mingw64/bin/zlib1.dll dist-win/
+          test -f /mingw64/bin/libsystre-0.dll && cp /mingw64/bin/libsystre-0.dll dist-win/ || true
           cp README.md dist-win/
           cp LICENSE dist-win/
           cd dist-win && zip -r ../kmsCoCo-windows-x64.zip *
