@@ -187,7 +187,21 @@ sds find_in_path(const char *path, const char *filename) {
 
 	while (p) {
 		sdssetlen(s, 0);
+#ifdef WINDOWS32
+		sds tok = sdsx_tok_str_len(&p, &plen, "[;:]", 0);
+		// If tok is just a single drive letter (e.g. "C") and p starts with '\' or '/',
+		// this was a drive specification (e.g. "C:\..."), not a path delimiter.
+		if (sdslen(tok) == 1 && c_isalpha((unsigned char)tok[0]) && p && (*p == '\\' || *p == '/')) {
+			sds next_tok = sdsx_tok_str_len(&p, &plen, "[;:]", 0);
+			tok = sdscatlen(tok, ":", 1);
+			if (next_tok) {
+				tok = sdscatsds(tok, next_tok);
+				sdsfree(next_tok);
+			}
+		}
+#else
 		sds tok = sdsx_tok_str_len(&p, &plen, ":", 0);
+#endif
 		sds pathelem = path_interp(tok);
 		sdsfree(tok);
 

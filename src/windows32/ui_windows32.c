@@ -15,6 +15,7 @@
 #include "top-config.h"
 
 #include <windows.h>
+#include <shlobj.h>
 
 #include <assert.h>
 #include <stdio.h>
@@ -88,6 +89,78 @@ static void windows32_update_joystick_menus(void *);
 static void uiw32_ui_state_notify(void *, int tag, void *smsg);
 static bool SDLCALL sdl_windows_message_hook(void *sptr, MSG *msg);
 
+static void win32_check_coco_roms(HWND hWnd) {
+	struct coco_rom_status status;
+	check_coco_roms(&status);
+	if (status.all_ok) {
+		free_coco_rom_status(&status);
+		return;
+	}
+
+	while (!status.all_ok) {
+		char info[1024];
+		snprintf(info, sizeof(info),
+			"kmsCoCo requires Tandy Color Computer system ROMs to operate:\n\n"
+			"• Color BASIC: %s\n"
+			"• Extended Color BASIC: %s\n"
+			"• RS-DOS Cartridge: %s\n\n"
+			"Click OK to locate the folder containing your ROM files, or Cancel to exit.",
+			status.has_bas ? "Found" : "MISSING (bas13.rom)",
+			status.has_extbas ? "Found" : "MISSING (extbas11.rom)",
+			status.has_rsdos ? "Found" : "MISSING (disk11.rom)"
+		);
+
+		int res = MessageBoxA(hWnd, info, "Tandy Color Computer System ROMs Missing", MB_ICONWARNING | MB_OKCANCEL);
+		if (res != IDOK) {
+			free_coco_rom_status(&status);
+			exit(0);
+		}
+
+		BROWSEINFOA bi = {0};
+		char path_buf[MAX_PATH] = {0};
+		bi.hwndOwner = hWnd;
+		bi.pszDisplayName = path_buf;
+		bi.lpszTitle = "Locate Color Computer System ROMs Folder";
+		bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+
+		LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
+		if (pidl) {
+			if (SHGetPathFromIDListA(pidl, path_buf) && path_buf[0]) {
+				char roms_subdir[MAX_PATH];
+				snprintf(roms_subdir, sizeof(roms_subdir), "%s\\roms", path_buf);
+
+				DWORD attr = GetFileAttributesA(roms_subdir);
+				bool has_roms_subdir = (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));
+
+				const char *cur = xroar_get_rom_path();
+				char new_rom_path[2048];
+				if (has_roms_subdir) {
+					if (cur && *cur) {
+						snprintf(new_rom_path, sizeof(new_rom_path), "%s;%s;%s", path_buf, roms_subdir, cur);
+					} else {
+						snprintf(new_rom_path, sizeof(new_rom_path), "%s;%s", path_buf, roms_subdir);
+					}
+				} else {
+					if (cur && *cur) {
+						snprintf(new_rom_path, sizeof(new_rom_path), "%s;%s", path_buf, cur);
+					} else {
+						snprintf(new_rom_path, sizeof(new_rom_path), "%s", path_buf);
+					}
+				}
+
+				xroar_set_rom_path(new_rom_path);
+				xroar_save_config_file();
+			}
+			CoTaskMemFree(pidl);
+		}
+
+		free_coco_rom_status(&status);
+		check_coco_roms(&status);
+	}
+
+	free_coco_rom_status(&status);
+}
+
 static void *ui_windows32_new(void *cfg) {
 	struct ui_cfg *ui_cfg = cfg;
 
@@ -146,6 +219,8 @@ static void *ui_windows32_new(void *cfg) {
 	}
 
 	SDL_SetWindowsMessageHook(sdl_windows_message_hook, uiw32);
+
+	win32_check_coco_roms(uiw32->main_window);
 
 	return uiw32;
 }

@@ -325,7 +325,7 @@ AM_COND_IF([MINGW], [
 		test "x$enable_ui_sdl" != "xyes" && enable_ui_sdl=no
 		AC_DEFINE([WINDOWS32], 1, [Windows])
 		MINGW_CFLAGS="-D__USE_MINGW_ANSI_STDIO=1"
-		MINGW_LIBS="-lmingw32 -lwinmm -mwindows -lws2_32 -lcomctl32 -lole32 -luuid -lregex"
+		MINGW_LIBS="-lmingw32 -lwinmm -mwindows -lws2_32 -lcomctl32 -lole32 -lshell32 -luuid -lregex"
 		test -z "$with_opengl" && with_opengl=no
 		])
 AC_SUBST(MINGW_CFLAGS)

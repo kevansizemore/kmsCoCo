@@ -295,6 +295,91 @@ static GtkToggleActionEntry const ui_toggles[] = {
 static void ui_gtk2_free(void *);
 static void ui_gtk2_run(void *);
 
+static void gtk2_check_coco_roms(GtkWindow *parent) {
+	struct coco_rom_status status;
+	check_coco_roms(&status);
+	if (status.all_ok) {
+		free_coco_rom_status(&status);
+		return;
+	}
+
+	while (!status.all_ok) {
+		char info[1024];
+		snprintf(info, sizeof(info),
+			"kmsCoCo requires Tandy Color Computer system ROMs to operate:\n\n"
+			"• Color BASIC: %s\n"
+			"• Extended Color BASIC: %s\n"
+			"• RS-DOS Cartridge: %s\n\n"
+			"Please select a folder containing the required ROM images.",
+			status.has_bas ? "Found" : "MISSING (bas13.rom)",
+			status.has_extbas ? "Found" : "MISSING (extbas11.rom)",
+			status.has_rsdos ? "Found" : "MISSING (disk11.rom)"
+		);
+
+		GtkWidget *dialog = gtk_message_dialog_new(parent,
+			GTK_DIALOG_MODAL,
+			GTK_MESSAGE_WARNING,
+			GTK_BUTTONS_NONE,
+			"Tandy Color Computer System ROMs Missing");
+		gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", info);
+		gtk_dialog_add_button(GTK_DIALOG(dialog), "Quit", GTK_RESPONSE_CANCEL);
+		gtk_dialog_add_button(GTK_DIALOG(dialog), "Locate ROMs Folder…", GTK_RESPONSE_ACCEPT);
+
+		gint res = gtk_dialog_run(GTK_DIALOG(dialog));
+		gtk_widget_destroy(dialog);
+		if (res != GTK_RESPONSE_ACCEPT) {
+			free_coco_rom_status(&status);
+			exit(0);
+		}
+
+		GtkWidget *chooser = gtk_file_chooser_dialog_new(
+			"Locate Color Computer System ROMs Folder",
+			parent,
+			GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,
+			"_Cancel", GTK_RESPONSE_CANCEL,
+			"_Select Folder", GTK_RESPONSE_ACCEPT,
+			NULL);
+
+		if (gtk_dialog_run(GTK_DIALOG(chooser)) == GTK_RESPONSE_ACCEPT) {
+			char *folder = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+			if (folder) {
+				gchar *roms_subdir = g_build_filename(folder, "roms", NULL);
+				gboolean has_roms_subdir = g_file_test(roms_subdir, G_FILE_TEST_IS_DIR);
+
+				const char *cur = xroar_get_rom_path();
+				gchar *new_rom_path = NULL;
+				if (has_roms_subdir) {
+					if (cur && *cur) {
+						new_rom_path = g_strdup_printf("%s:%s:%s", folder, roms_subdir, cur);
+					} else {
+						new_rom_path = g_strdup_printf("%s:%s", folder, roms_subdir);
+					}
+				} else {
+					if (cur && *cur) {
+						new_rom_path = g_strdup_printf("%s:%s", folder, cur);
+					} else {
+						new_rom_path = g_strdup_printf("%s", folder);
+					}
+				}
+
+				if (new_rom_path) {
+					xroar_set_rom_path(new_rom_path);
+					xroar_save_config_file();
+					g_free(new_rom_path);
+				}
+				g_free(roms_subdir);
+				g_free(folder);
+			}
+		}
+		gtk_widget_destroy(chooser);
+
+		free_coco_rom_status(&status);
+		check_coco_roms(&status);
+	}
+
+	free_coco_rom_status(&status);
+}
+
 static void *ui_gtk2_new(void *cfg) {
 	struct ui_cfg *ui_cfg = cfg;
 
@@ -484,6 +569,8 @@ static void *ui_gtk2_new(void *cfg) {
 	// Ensure we get those events
 	gtk_widget_add_events(uigtk2->top_window, GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK);
 	gtk_widget_add_events(uigtk2->drawing_area, GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+
+	gtk2_check_coco_roms(GTK_WINDOW(uigtk2->top_window));
 
 	return ui;
 }
