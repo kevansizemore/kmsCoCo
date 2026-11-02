@@ -600,7 +600,7 @@ kmscoco_SOURCES += \
 	filereq_cli.c
 endif
 
-all-local:
-	ln -sf kmscoco xroar
+all-local: $(bin_PROGRAMS)
+	-ln -sf kmscoco$(EXEEXT) xroar$(EXEEXT) 2>/dev/null || cp -f kmscoco$(EXEEXT) xroar$(EXEEXT) 2>/dev/null || true
 
-CLEANFILES += xroar
+CLEANFILES += xroar xroar$(EXEEXT)
