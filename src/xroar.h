@@ -207,7 +207,11 @@ void xroar_load_disk(const char *filename, int drive, bool autorun);
 // Helper functions
 void xroar_set_trace(int mode, unsigned n);
 void xroar_new_disk(int drive);
+#ifdef HAVE_COCOA
 bool cocoa_filereq_last_disk_auto_format(void);
+#else
+static inline bool cocoa_filereq_last_disk_auto_format(void) { return false; }
+#endif
 void xroar_insert_disk_file(int drive, const char *filename);
 void xroar_insert_disk(int drive);
 void xroar_eject_disk(int drive);
