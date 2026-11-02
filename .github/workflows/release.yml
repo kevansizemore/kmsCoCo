@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install autoconf automake pkg-config sdl2 libpng
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install autoconf automake pkg-config sdl2 libpng texinfo
 
       - name: Bootstrap & Configure
         run: |
@@ -45,7 +45,9 @@ jobs:
                       LDFLAGS="-arch arm64"
 
       - name: Compile
-        run: make -j$(sysctl -n hw.ncpu)
+        run: |
+          export PATH="$(brew --prefix texinfo)/bin:$PATH"
+          make -j$(sysctl -n hw.ncpu) MAKEINFO=true
 
       - name: Package App Bundle
         run: |
@@ -87,7 +89,7 @@ jobs:
                       CFLAGS="-O3"
 
       - name: Compile
-        run: make -j$(nproc)
+        run: make -j$(nproc) MAKEINFO=true
 
       - name: Package Linux Tarball
         run: |
@@ -123,7 +125,6 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-autotools
             mingw-w64-x86_64-sdl3
-            mingw-w64-x86_64-sdl2
             mingw-w64-x86_64-libpng
             zip
 
@@ -142,7 +143,7 @@ jobs:
 
       - name: Compile
         shell: msys2 {0}
-        run: make -j$NUMBER_OF_PROCESSORS
+        run: make -j$NUMBER_OF_PROCESSORS MAKEINFO=true
 
       - name: Package Windows Zip
         shell: msys2 {0}
@@ -150,7 +151,6 @@ jobs:
           mkdir -p dist-win
           cp src/kmscoco.exe dist-win/
           cp /mingw64/bin/SDL3.dll dist-win/
-          test -f /mingw64/bin/SDL2.dll && cp /mingw64/bin/SDL2.dll dist-win/ || true
           cp /mingw64/bin/libpng16-16.dll dist-win/
           cp /mingw64/bin/zlib1.dll dist-win/
           cp README.md dist-win/
