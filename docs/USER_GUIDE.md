@@ -36,7 +36,9 @@ kmsCoCo combines cycle-accurate Motorola 6809/6801 and Hitachi 6309 CPU emulatio
 ## 1. Quick Start
 
 ### Installation
-On macOS, double-click **kmsCoCo.app** in `/Applications`.
+* **macOS**: Move **kmsCoCo.app** to `/Applications`. If Gatekeeper reports that the app is "damaged" on first launch (due to browser quarantine and ad-hoc code signing), run `xattr -cr /Applications/kmsCoCo.app` in Terminal.
+* **Windows**: Extract `kmsCoCo-windows-x64.zip` and run `kmscoco.exe`. If Windows Defender SmartScreen appears, click **"More info"** followed by **"Run anyway"**.
+* **Linux**: Extract `kmsCoCo-linux-x86_64.tar.gz`, mark executable with `chmod +x kmscoco`, and launch `./kmscoco`.
 
 ### System Requirements
 * **Operating System**: macOS 11.0 (Big Sur) or later (Apple Silicon M1/M2/M3/M4 and Intel x86_64).
@@ -262,3 +264,15 @@ The Tandy Color Computer's Motorola 6847 Video Display Generator (VDG) produces 
 
 ### 3. How do I configure ROM files if the screen is black?
 * Open **Preferences** (`Cmd+,`), navigate to the **ROMs** section, and choose the directory where your Color Computer ROMs (`bas10.rom`, `extbas11.rom`, `disk11.rom`) are stored. kmsCoCo scans and binds them automatically.
+
+### 4. macOS says the app is "damaged" and should be moved to the Trash
+* This is a standard macOS Gatekeeper false alarm caused by browser download quarantine combined with an ad-hoc open-source code signature.
+* Open **Terminal** and strip the quarantine flag:
+  ```bash
+  xattr -cr /Applications/kmsCoCo.app
+  ```
+  *(or replace the path with your actual download location, e.g., `~/Downloads/kmsCoCo.app`)*.
+
+### 5. Windows Defender SmartScreen blocks `kmscoco.exe`
+* Click **"More info"** on the blue SmartScreen dialog, then click **"Run anyway"**.
+* Alternatively, right-click `kmscoco.exe` -> **Properties** -> check **Unblock** -> click **OK**.

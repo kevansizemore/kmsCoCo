@@ -67,9 +67,36 @@ Standard filenames recognized by the emulator include:
 ## Quick Start (Pre-Built Releases)
 
 Download the latest pre-compiled build for your platform from the [GitHub Releases](https://github.com/kevansizemore/kmsCoCo/releases) page:
-* **macOS**: Download `kmsCoCo-macos-arm64.dmg` (or `.tar.gz`), drag `kmsCoCo.app` to `/Applications`.
+* **macOS**: Download `kmsCoCo-macos-arm64.zip`, extract, and move `kmsCoCo.app` to `/Applications`.
 * **Windows**: Download `kmsCoCo-windows-x64.zip`, extract, and launch `kmscoco.exe`.
 * **Linux**: Download `kmsCoCo-linux-x86_64.tar.gz`, extract, and run `./kmscoco`.
+
+### Security Notices & First Launch
+
+Because `kmsCoCo` is an independent open-source project and is not signed with costly commercial enterprise certificates, modern operating systems may display security prompts on first launch:
+
+#### macOS (Gatekeeper / "App is damaged")
+When downloaded via a web browser, macOS tags the application with a quarantine flag. Because the app uses an open-source ad-hoc signature rather than an Apple Developer notarization ticket, Gatekeeper may display a dialog claiming the app is *"damaged and can't be opened."*
+
+To clear this flag, open **Terminal** and run:
+```bash
+xattr -cr /path/to/kmsCoCo.app
+```
+*(For example: `xattr -cr /Applications/kmsCoCo.app` or `xattr -cr ~/Downloads/kmsCoCo.app`)*. The application will then open immediately.
+
+#### Windows (Microsoft Defender SmartScreen)
+Windows may display a blue dialog stating *"Windows protected your PC / Microsoft Defender SmartScreen prevented an unrecognized app from starting"*:
+1. Click **"More info"**.
+2. Click **"Run anyway"**.
+*(Alternatively, right-click `kmscoco.exe` or the downloaded `.zip` before unzipping, select **Properties**, check the **Unblock** box at the bottom, and click **OK**).*
+
+#### Linux (Executable Permissions)
+Depending on your archive manager, the execute permission bit may need to be enabled after extraction:
+```bash
+chmod +x kmscoco
+./kmscoco
+```
+Ensure your system has standard runtime libraries installed (e.g., `libgtk-3-0` and `libsdl2-2.0-0` on Ubuntu/Debian).
 
 ---
 
