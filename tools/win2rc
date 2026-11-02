@@ -16,7 +16,9 @@ require v5.10;
 use Getopt::Long;
 use Pod::Usage;
 use Scalar::Util qw(looks_like_number);
-use Text::Iconv;
+use Encode qw(encode decode);
+eval { require Text::Iconv; };
+my $has_text_iconv = !$@;
 
 Getopt::Long::Configure("gnu_getopt", "pass_through");
 
@@ -48,7 +50,10 @@ GetOptions(
 
 my $filename = shift @ARGV or die "specify input file\n";
 
-my $iconv = Text::Iconv->new("UTF-8", "WINDOWS-1252");
+my $iconv;
+if ($has_text_iconv) {
+	$iconv = Text::Iconv->new("UTF-8", "WINDOWS-1252");
+}
 
 if (!$want_htmlish && !$want_headers && !$want_rc) {
 	$want_headers = 1;
@@ -308,7 +313,11 @@ sub line {
 	my $in = shift;
 	my $ret = $line;
 	undef $line;
-	return $iconv->convert($ret);
+	return unless defined $ret;
+	if ($has_text_iconv && $iconv) {
+		return $iconv->convert($ret);
+	}
+	return encode("WINDOWS-1252", decode("UTF-8", $ret));
 }
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
