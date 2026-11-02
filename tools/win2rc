@@ -304,7 +304,7 @@ sub word {
 			$line_number++;
 		} while (defined $line && $line =~ /^\s*(#.*)$/);
 		return undef if (!defined $line);
-		chomp $line;
+		$line =~ s/[\r\n]+$//;
 	} while (defined $line);
 	return undef;
 }
@@ -314,6 +314,7 @@ sub line {
 	my $ret = $line;
 	undef $line;
 	return unless defined $ret;
+	$ret =~ s/[\r\n]+$//;
 	if ($has_text_iconv && $iconv) {
 		return $iconv->convert($ret);
 	}
